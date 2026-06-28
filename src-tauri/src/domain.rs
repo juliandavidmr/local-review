@@ -15,6 +15,15 @@ pub enum ChangeSource {
     WorkingTree {
         repository_path: String,
     },
+    CurrentBranch {
+        repository_path: String,
+    },
+    StagedChanges {
+        repository_path: String,
+    },
+    UnstagedChanges {
+        repository_path: String,
+    },
     Commit {
         repository_path: String,
         commit_sha: String,
@@ -282,7 +291,7 @@ pub fn default_provider_settings() -> ProviderSettings {
                 kind: LocalModelProviderKind::Ollama,
                 name: "Ollama".to_string(),
                 base_url: "http://localhost:11434".to_string(),
-                enabled: true,
+                enabled: false,
                 selected_model_id: None,
                 use_for_human_tone_rewrite: false,
             },
@@ -291,7 +300,7 @@ pub fn default_provider_settings() -> ProviderSettings {
                 kind: LocalModelProviderKind::LmStudio,
                 name: "LM Studio".to_string(),
                 base_url: "http://localhost:1234/v1".to_string(),
-                enabled: false,
+                enabled: true,
                 selected_model_id: None,
                 use_for_human_tone_rewrite: false,
             },

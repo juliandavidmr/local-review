@@ -118,7 +118,7 @@ async fn run_review_session(
 
     Ok(ReviewWorkspaceSession {
         repository,
-        change_source: "Working tree".to_string(),
+        change_source: change_source_label(&change_set.source).to_string(),
         change_set: change_set.clone(),
         profiles: active_profiles,
         provider_settings,
@@ -145,6 +145,17 @@ async fn run_review_session(
             incomplete_session: failed_passes > 0,
         },
     })
+}
+
+fn change_source_label(source: &ChangeSource) -> &'static str {
+    match source {
+        ChangeSource::WorkingTree { .. } => "Working tree",
+        ChangeSource::CurrentBranch { .. } => "Current branch",
+        ChangeSource::StagedChanges { .. } => "Staged changes",
+        ChangeSource::UnstagedChanges { .. } => "Unstaged changes",
+        ChangeSource::Commit { .. } => "Commit",
+        ChangeSource::CompareRefs { .. } => "Compare refs",
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

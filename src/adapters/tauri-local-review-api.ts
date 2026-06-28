@@ -29,6 +29,12 @@ export type ChangeSetSnapshot = {
   fingerprint: string
 }
 
+export type ReviewChangeSourceKind =
+  | "current_branch"
+  | "staged_changes"
+  | "unstaged_changes"
+  | "working_tree"
+
 export type ReviewWorkspaceSession = ReviewWorkspaceView & {
   changeSet: ChangeSetSnapshot
 }
@@ -50,9 +56,16 @@ export async function openRepository(
 export async function buildWorkingTreeChangeSet(
   repositoryPath: string,
 ): Promise<ChangeSetSnapshot> {
+  return buildChangeSet(repositoryPath, "working_tree")
+}
+
+export async function buildChangeSet(
+  repositoryPath: string,
+  sourceKind: ReviewChangeSourceKind,
+): Promise<ChangeSetSnapshot> {
   return invoke("build_change_set", {
     source: {
-      type: "working_tree",
+      type: sourceKind,
       repository_path: repositoryPath,
     },
   })
@@ -117,9 +130,22 @@ export async function runReviewSession(input: {
     },
     changeSource: {
       kind: session.changeSource,
-      target: "Working tree",
-      intent: "Reviewing local changes",
+      target: session.changeSource,
+      intent: changeSourceIntent(session.changeSource),
       snapshot: `${session.execution.changedFiles} files, ${session.execution.modifiedLines} modified lines`,
     },
+  }
+}
+
+function changeSourceIntent(changeSource: string): string {
+  switch (changeSource) {
+    case "Current branch":
+      return "Reviewing branch changes against its base"
+    case "Staged changes":
+      return "Reviewing local changes staged for commit"
+    case "Unstaged changes":
+      return "Reviewing local unstaged working tree changes"
+    default:
+      return "Reviewing local changes"
   }
 }

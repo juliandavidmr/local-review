@@ -30,7 +30,7 @@ pub fn open_repository(repository_path: &str) -> Result<RepositoryDescriptor, St
 
 pub fn build_change_set(source: ChangeSource) -> Result<ChangeSetSnapshot, String> {
     let repository_path = source_repository_path(&source).to_string();
-    let diff_args = diff_args(&source);
+    let diff_args = diff_args(&repository_path, &source)?;
     let name_status = run_git_with_extra(&repository_path, &diff_args, &["--name-status"])?;
     let numstat = run_git_with_extra(&repository_path, &diff_args, &["--numstat"])?;
     let patch = run_git_with_extra(&repository_path, &diff_args, &["--unified=3"])?;
@@ -77,6 +77,9 @@ pub fn build_change_set(source: ChangeSource) -> Result<ChangeSetSnapshot, Strin
 fn source_repository_path(source: &ChangeSource) -> &str {
     match source {
         ChangeSource::WorkingTree { repository_path } => repository_path,
+        ChangeSource::CurrentBranch { repository_path } => repository_path,
+        ChangeSource::StagedChanges { repository_path } => repository_path,
+        ChangeSource::UnstagedChanges { repository_path } => repository_path,
         ChangeSource::Commit {
             repository_path, ..
         } => repository_path,
@@ -86,22 +89,53 @@ fn source_repository_path(source: &ChangeSource) -> &str {
     }
 }
 
-fn diff_args(source: &ChangeSource) -> Vec<String> {
+fn diff_args(repository_path: &str, source: &ChangeSource) -> Result<Vec<String>, String> {
     match source {
-        ChangeSource::WorkingTree { .. } => vec!["diff".to_string(), "HEAD".to_string()],
-        ChangeSource::Commit { commit_sha, .. } => vec![
+        ChangeSource::WorkingTree { .. } => Ok(vec!["diff".to_string(), "HEAD".to_string()]),
+        ChangeSource::CurrentBranch { .. } => Ok(vec![
+            "diff".to_string(),
+            format!("{}...HEAD", current_branch_base_ref(repository_path)?),
+        ]),
+        ChangeSource::StagedChanges { .. } => Ok(vec![
+            "diff".to_string(),
+            "--cached".to_string(),
+        ]),
+        ChangeSource::UnstagedChanges { .. } => Ok(vec!["diff".to_string()]),
+        ChangeSource::Commit { commit_sha, .. } => Ok(vec![
             "diff".to_string(),
             format!("{commit_sha}^"),
             commit_sha.to_string(),
-        ],
+        ]),
         ChangeSource::CompareRefs {
             base_ref, head_ref, ..
-        } => vec![
+        } => Ok(vec![
             "diff".to_string(),
             base_ref.to_string(),
             head_ref.to_string(),
-        ],
+        ]),
     }
+}
+
+fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
+    if let Ok(upstream) = run_git(
+        repository_path,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+    ) {
+        if !upstream.trim().is_empty() {
+            return Ok(upstream.trim().to_string());
+        }
+    }
+
+    for candidate in ["origin/main", "origin/master", "main", "master"] {
+        if run_git(repository_path, &["rev-parse", "--verify", candidate]).is_ok() {
+            return Ok(candidate.to_string());
+        }
+    }
+
+    Err(
+        "Current branch review needs an upstream branch or a main/master base ref."
+            .to_string(),
+    )
 }
 
 fn run_git(repository_path: &str, args: &[&str]) -> Result<String, String> {

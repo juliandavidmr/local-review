@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowsClockwise, FolderOpen, Plus } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
@@ -16,8 +16,10 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   selectSingleModelProvider,
   updateModelProviderSettings,
+  type ModelProviderSettings,
   type ProviderSettings,
 } from "@/domain"
+import type { ReviewChangeSourceKind } from "@/adapters/tauri-local-review-api"
 import type {
   ReviewProfileItem,
   ReviewProfileScopeKind,
@@ -32,6 +34,7 @@ type InitialSetupScreenProps = {
   providerSettings: ProviderSettings
   onComplete: (setup: {
     repositoryPath: string
+    reviewSourceKind: ReviewChangeSourceKind
     profiles: ReviewProfileItem[]
     providerSettings: ProviderSettings
   }) => void | Promise<void>
@@ -48,6 +51,28 @@ const quickModels = {
   "lm-studio": ["local-model", "qwen2.5-coder-instruct", "openai/gpt-oss-20b"],
 }
 
+const reviewSourceOptions: Array<{
+  value: ReviewChangeSourceKind
+  label: string
+  description: string
+}> = [
+  {
+    value: "current_branch",
+    label: "Current branch",
+    description: "Diff the current branch against its upstream or main base.",
+  },
+  {
+    value: "staged_changes",
+    label: "Staged changes",
+    description: "Review only changes already staged with git add.",
+  },
+  {
+    value: "unstaged_changes",
+    label: "Unstaged changes",
+    description: "Review local working tree changes that are not staged.",
+  },
+]
+
 export function InitialSetupScreen({
   error,
   initialProfiles,
@@ -57,7 +82,11 @@ export function InitialSetupScreen({
 }: InitialSetupScreenProps) {
   const [repositoryPath, setRepositoryPath] = useState("")
   const [profiles, setProfiles] = useState(initialProfiles)
-  const [settings, setSettings] = useState(providerSettings)
+  const [settings, setSettings] = useState(() =>
+    selectSingleModelProvider(providerSettings, "lm-studio"),
+  )
+  const [reviewSourceKind, setReviewSourceKind] =
+    useState<ReviewChangeSourceKind>("unstaged_changes")
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>({
     name: "",
     prompt: "",
@@ -65,10 +94,13 @@ export function InitialSetupScreen({
   })
   const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
     useProviderModelProbe(settings, setSettings)
+  const autoTestedLmStudio = useRef(false)
   const activeProfiles = profiles.filter((profile) => profile.selected)
   const selectedProvider = settings.modelProviders.find(
     (provider) => provider.enabled && provider.selectedModelId,
   )
+  const activeProvider = settings.modelProviders.find((provider) => provider.enabled)
+  const activeProviderId = activeProvider?.id ?? "lm-studio"
   const canStart =
     repositoryPath.trim().length > 0 &&
     Boolean(selectedProvider) &&
@@ -90,13 +122,32 @@ export function InitialSetupScreen({
           : "Choose a provider and model",
       },
       {
+        label: "Review source",
+        done: true,
+        detail:
+          reviewSourceOptions.find((option) => option.value === reviewSourceKind)
+            ?.label ?? "Unstaged changes",
+      },
+      {
         label: "Profiles",
         done: activeProfiles.length > 0,
         detail: `${activeProfiles.length} active`,
       },
     ],
-    [activeProfiles.length, repositoryPath, selectedProvider],
+    [activeProfiles.length, repositoryPath, reviewSourceKind, selectedProvider],
   )
+
+  useEffect(() => {
+    if (autoTestedLmStudio.current) return
+
+    const lmStudio = settings.modelProviders.find(
+      (provider) => provider.id === "lm-studio" && provider.enabled,
+    )
+    if (!lmStudio) return
+
+    autoTestedLmStudio.current = true
+    void refreshProvider(lmStudio)
+  }, [])
 
   async function chooseRepositoryFolder() {
     try {
@@ -119,6 +170,10 @@ export function InitialSetupScreen({
     setSettings((current) =>
       selectSingleModelProvider(current, providerId, selectedModelId),
     )
+  }
+
+  function selectProviderType(providerId: string) {
+    setSettings((current) => selectSingleModelProvider(current, providerId))
   }
 
   function updateProviderBaseUrl(providerId: string, baseUrl: string) {
@@ -201,8 +256,183 @@ export function InitialSetupScreen({
             </SetupBlock>
 
             <SetupBlock title="Provider and model">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Provider type</Label>
+                  <Select onValueChange={selectProviderType} value={activeProviderId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {settings.modelProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {activeProvider ? (
+                  <ProviderSetupCard
+                    isLoading={loadingProviderId === activeProvider.id}
+                    models={modelsByProvider[activeProvider.id] ?? []}
+                    onBaseUrlChange={updateProviderBaseUrl}
+                    onModelSelect={selectProvider}
+                    onRefresh={refreshProvider}
+                    provider={activeProvider}
+                    status={statuses[activeProvider.id]}
+                  />
+                ) : null}
+              </div>
+            </SetupBlock>
+
+            <SetupBlock title="Review source">
+              <div className="grid gap-3 md:grid-cols-3">
+                {reviewSourceOptions.map((option) => (
+                  <button
+                    className={
+                      reviewSourceKind === option.value
+                        ? "border border-foreground bg-background p-3 text-left"
+                        : "border border-border bg-background p-3 text-left hover:bg-muted"
+                    }
+                    key={option.value}
+                    onClick={() => setReviewSourceKind(option.value)}
+                    type="button"
+                  >
+                    <span className="block text-sm font-medium">{option.label}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </SetupBlock>
+
+            <SetupBlock title="Review profiles">
               <div className="grid gap-3 md:grid-cols-2">
-                {settings.modelProviders.map((provider) => {
+                <div className="space-y-3">
+                  {profiles.map((profile) => (
+                    <label
+                      className="flex items-start justify-between gap-3 border border-border p-3"
+                      key={profile.id}
+                    >
+                      <span>
+                        <span className="block text-sm font-medium">
+                          {profile.name}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {profile.scope}
+                        </span>
+                      </span>
+                      <Switch
+                        checked={profile.selected}
+                        onCheckedChange={(selected) =>
+                          setProfiles((current) =>
+                            current.map((candidate) =>
+                              candidate.id === profile.id
+                                ? { ...candidate, selected }
+                                : candidate,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="space-y-3 border border-border p-3">
+                  <p className="text-sm font-medium">Create manual profile</p>
+                  <Input
+                    onChange={(event) =>
+                      setProfileDraft((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="Security"
+                    value={profileDraft.name}
+                  />
+                  <Select
+                    onValueChange={(scopeKind) =>
+                      setProfileDraft((current) => ({
+                        ...current,
+                        scopeKind: scopeKind as ReviewProfileScopeKind,
+                      }))
+                    }
+                    value={profileDraft.scopeKind}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">Global</SelectItem>
+                      <SelectItem value="repository">Repository path</SelectItem>
+                      <SelectItem value="folder">Folder path</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    className="min-h-24"
+                    onChange={(event) =>
+                      setProfileDraft((current) => ({
+                        ...current,
+                        prompt: event.target.value,
+                      }))
+                    }
+                    placeholder="Review for..."
+                    value={profileDraft.prompt}
+                  />
+                  <Button className="w-full" onClick={createProfile} variant="outline">
+                    <Plus className="size-4" />
+                    Add profile
+                  </Button>
+                </div>
+              </div>
+            </SetupBlock>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+          {error ? (
+            <p className="mr-auto max-w-xl text-sm text-destructive">{error}</p>
+          ) : null}
+          <Button
+            disabled={!canStart}
+            onClick={() =>
+              onComplete({
+                repositoryPath: repositoryPath.trim(),
+                reviewSourceKind,
+                profiles,
+                providerSettings: settings,
+              })
+            }
+          >
+            {isRunning ? "Running review..." : "Start review workspace"}
+          </Button>
+        </div>
+      </section>
+    </main>
+  )
+}
+
+type ProviderSetupCardProps = {
+  provider: ModelProviderSettings
+  models: readonly { displayName: string; modelId: string }[]
+  status?: { ok: boolean; message: string }
+  isLoading: boolean
+  onBaseUrlChange: (providerId: string, baseUrl: string) => void
+  onModelSelect: (providerId: string, selectedModelId: string) => void
+  onRefresh: (provider: ModelProviderSettings) => void
+}
+
+function ProviderSetupCard({
+  provider,
+  models,
+  status,
+  isLoading,
+  onBaseUrlChange,
+  onModelSelect,
+  onRefresh,
+}: ProviderSetupCardProps) {
                   const fetchedModels = modelsByProvider[provider.id] ?? []
                   const presetModels =
                     quickModels[provider.id as keyof typeof quickModels] ?? []

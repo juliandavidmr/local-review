@@ -41,14 +41,14 @@ export const defaultProviderSettings: ProviderSettings = {
       kind: "ollama",
       name: "Ollama",
       baseUrl: "http://localhost:11434",
-      enabled: true,
+      enabled: false,
     },
     {
       id: "lm-studio",
       kind: "lm_studio",
       name: "LM Studio",
       baseUrl: "http://localhost:1234/v1",
-      enabled: false,
+      enabled: true,
     },
   ],
   mcpSources: [
