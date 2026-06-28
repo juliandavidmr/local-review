@@ -6,6 +6,7 @@ import {
   type ChangeSetSnapshot,
   loadProfiles,
   loadProviderSettings,
+  listenReviewProgress,
   openRepository,
   runReviewSession,
   saveProviderSettings,
@@ -16,7 +17,11 @@ import {
 import { WorkspaceShell } from "@/components/layout/WorkspaceShell"
 import { Button } from "@/components/ui/button"
 import { defaultProviderSettings, type ProviderSettings } from "@/domain"
-import type { ReviewProfileItem } from "@/domain/workspace-view"
+import type {
+  ReviewFeedbackItem,
+  ReviewProfileItem,
+  ReviewWorkspaceView,
+} from "@/domain/workspace-view"
 
 import { ExecutionStatus } from "./ExecutionStatus"
 import { FeedbackWorkspace } from "./FeedbackWorkspace"
@@ -91,6 +96,7 @@ export function LocalReviewWorkspace() {
           setRunning(true)
           setError(null)
           let startedReviewId: string | null = null
+          let unlistenProgress: (() => void) | null = null
           try {
             const repository = await openRepository(setup.repositoryPath)
             const changeSet = await buildChangeSet(
@@ -130,6 +136,15 @@ export function LocalReviewWorkspace() {
                 repository,
               }),
             )
+            unlistenProgress = await listenReviewProgress((progress) => {
+              if (activeReviewId.current !== progress.reviewId) return
+
+              setSession((current) =>
+                current
+                  ? applyReviewProgress(current, progress.execution, progress.feedback)
+                  : current,
+              )
+            })
 
             const nextSession = await runReviewSession({
               reviewId,
@@ -145,6 +160,7 @@ export function LocalReviewWorkspace() {
           } catch (unknownError) {
             setError(errorMessage(unknownError))
           } finally {
+            unlistenProgress?.()
             if (startedReviewId && activeReviewId.current === startedReviewId) {
               activeReviewId.current = null
             }
@@ -249,6 +265,53 @@ export function LocalReviewWorkspace() {
         : current,
     )
   }
+}
+
+function applyReviewProgress(
+  session: ReviewWorkspaceSession,
+  execution: ReviewWorkspaceView["execution"],
+  feedback: ReviewFeedbackItem[],
+): ReviewWorkspaceSession {
+  const nextFeedback = mergeFeedback(session.feedback, feedback)
+  const inlineComments = nextFeedback.filter((item) => item.type === "inline").length
+  const summaryComments = nextFeedback.length - inlineComments
+  const limitedContextCount = nextFeedback.filter(
+    (item) => item.limitedContext,
+  ).length
+
+  return {
+    ...session,
+    execution: {
+      ...session.execution,
+      status: execution.status,
+      completedPasses: execution.completedPasses,
+      totalPasses: execution.totalPasses,
+      guardrailHits: execution.guardrailHits,
+    },
+    feedback: nextFeedback,
+    publication: {
+      ...session.publication,
+      totalComments: nextFeedback.length,
+      inlineComments,
+      summaryComments,
+      limitedContextCount,
+      incompleteSession:
+        session.publication.incompleteSession ||
+        execution.status === "incomplete" ||
+        execution.status === "cancelled",
+    },
+  }
+}
+
+function mergeFeedback(
+  currentFeedback: ReviewFeedbackItem[],
+  incomingFeedback: ReviewFeedbackItem[],
+): ReviewFeedbackItem[] {
+  if (incomingFeedback.length === 0) return currentFeedback
+
+  const existingIds = new Set(currentFeedback.map((item) => item.id))
+  const newItems = incomingFeedback.filter((item) => !existingIds.has(item.id))
+  return [...currentFeedback, ...newItems]
 }
 
 function errorMessage(error: unknown): string {

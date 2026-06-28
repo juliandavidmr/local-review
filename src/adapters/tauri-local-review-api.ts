@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core"
+import { listen } from "@tauri-apps/api/event"
 
 import type { ProviderConnectionStatus, ProviderSettings } from "@/domain"
 import type {
+  ReviewFeedbackItem,
   ReviewProfileItem,
   ReviewWorkspaceView,
 } from "@/domain/workspace-view"
@@ -37,6 +39,12 @@ export type ReviewChangeSourceKind =
 
 export type ReviewWorkspaceSession = ReviewWorkspaceView & {
   changeSet: ChangeSetSnapshot
+}
+
+export type ReviewProgressEvent = {
+  reviewId: string
+  execution: ReviewWorkspaceView["execution"]
+  feedback: ReviewFeedbackItem[]
 }
 
 type RawReviewWorkspaceSession = Omit<
@@ -111,6 +119,14 @@ export async function checkProviderConnection(
 
 export async function cancelReviewSession(reviewId: string): Promise<void> {
   return invoke("cancel_review_session", { reviewId })
+}
+
+export async function listenReviewProgress(
+  onProgress: (event: ReviewProgressEvent) => void,
+): Promise<() => void> {
+  return listen<ReviewProgressEvent>("review-progress", (event) => {
+    onProgress(event.payload)
+  })
 }
 
 export async function runReviewSession(input: {

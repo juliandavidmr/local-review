@@ -13,6 +13,8 @@ use domain::{
     ProviderConnectionStatus, ProviderSettings, PublicationSummary, RepositoryDescriptor,
     ReviewFeedback, ReviewProfileItem, ReviewWorkspaceSession,
 };
+use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 
 static CANCELLED_REVIEWS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
@@ -67,6 +69,7 @@ async fn check_provider_connection(
 
 #[tauri::command]
 async fn run_review_session(
+    app: AppHandle,
     review_id: String,
     repository: RepositoryDescriptor,
     change_set: ChangeSetSnapshot,
@@ -105,21 +108,41 @@ async fn run_review_session(
         for profile in &active_profiles {
             if review_cancelled(&review_id) {
                 cancelled = true;
+                emit_review_progress(
+                    &app,
+                    &review_id,
+                    "cancelled",
+                    completed_passes,
+                    total_passes,
+                    failed_passes,
+                    Vec::new(),
+                );
                 break;
             }
 
+            let mut pass_feedback = Vec::new();
             match providers::run_review_pass(&provider, profile, &change_set, file, pass_index)
                 .await
             {
-                Ok(mut pass_feedback) => {
+                Ok(feedback_from_pass) => {
                     completed_passes += 1;
-                    feedback.append(&mut pass_feedback);
+                    pass_feedback = feedback_from_pass.clone();
+                    feedback.extend(feedback_from_pass);
                 }
                 Err(_) => {
                     failed_passes += 1;
                 }
             }
             pass_index += 1;
+            emit_review_progress(
+                &app,
+                &review_id,
+                "running",
+                completed_passes,
+                total_passes,
+                failed_passes,
+                pass_feedback,
+            );
         }
 
         if cancelled {
@@ -174,6 +197,41 @@ async fn run_review_session(
             incomplete_session: status == "incomplete",
         },
     })
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewProgressEvent {
+    review_id: String,
+    execution: ExecutionStatus,
+    feedback: Vec<ReviewFeedback>,
+}
+
+fn emit_review_progress(
+    app: &AppHandle,
+    review_id: &str,
+    status: &str,
+    completed_passes: u32,
+    total_passes: u32,
+    failed_passes: u32,
+    feedback: Vec<ReviewFeedback>,
+) {
+    let _ = app.emit(
+        "review-progress",
+        ReviewProgressEvent {
+            review_id: review_id.to_string(),
+            execution: ExecutionStatus {
+                status: status.to_string(),
+                completed_passes,
+                total_passes,
+                changed_files: 0,
+                modified_lines: 0,
+                exploration_requests: 0,
+                guardrail_hits: failed_passes,
+            },
+            feedback,
+        },
+    );
 }
 
 #[tauri::command]
