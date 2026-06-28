@@ -14,6 +14,20 @@ export type ReviewSeverity =
 
 export type ReviewFeedbackType = "inline" | "summary"
 
+export type ReviewProfileScopeKind = "global" | "repository" | "folder"
+
+export type ReviewProfileItem = {
+  id: string
+  name: string
+  scope: string
+  scopeKind: ReviewProfileScopeKind
+  selected: boolean
+  enabledByDefault: boolean
+  criteria: string[]
+  fileGlobs: string[]
+  prompt: string
+}
+
 export type ReviewFeedbackItem = {
   id: string
   title: string
@@ -46,12 +60,7 @@ export type ReviewSessionMock = {
     intent: string
     snapshot: string
   }
-  profiles: Array<{
-    id: string
-    name: string
-    scope: string
-    selected: boolean
-  }>
+  profiles: ReviewProfileItem[]
   execution: {
     status: "running" | "completed" | "incomplete"
     completedPasses: number
@@ -89,19 +98,37 @@ export const localReviewMockSession: ReviewSessionMock = {
       id: "correctness",
       name: "Correctness",
       scope: "Repository path",
+      scopeKind: "repository",
       selected: true,
+      enabledByDefault: false,
+      criteria: ["Correctness", "Regression risk", "Edge cases"],
+      fileGlobs: ["src/**"],
+      prompt:
+        "Review for behavior regressions, incorrect assumptions, missing validation, and unsafe publication behavior.",
     },
     {
       id: "architecture",
       name: "Architecture",
       scope: "Global default",
+      scopeKind: "global",
       selected: true,
+      enabledByDefault: true,
+      criteria: ["Hexagonal boundaries", "Domain purity", "Adapter isolation"],
+      fileGlobs: ["*"],
+      prompt:
+        "Review the change for architecture boundaries, coupling, and adherence to the documented Local Review domain language.",
     },
     {
       id: "accessibility",
       name: "Accessibility",
       scope: "Folder path",
+      scopeKind: "folder",
       selected: false,
+      enabledByDefault: false,
+      criteria: ["Keyboard access", "Readable states", "Accessible controls"],
+      fileGlobs: ["src/features/**", "src/components/**"],
+      prompt:
+        "Review frontend surfaces for keyboard access, visible state, readable hierarchy, and control affordances.",
     },
   ],
   execution: {

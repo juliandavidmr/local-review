@@ -1,4 +1,5 @@
 export * from "./curate-review-feedback"
+export * from "./manage-review-profiles"
 export * from "./plan-review"
 export * from "./process-review-pass-output"
 export * from "./publication-use-cases"

@@ -124,6 +124,7 @@ export interface ProfileStore {
   readonly listProfiles: () => Promise<readonly ReviewProfile[]>
   readonly getProfile: (profileId: string) => Promise<ReviewProfile | undefined>
   readonly saveProfile: (profile: ReviewProfile) => Promise<void>
+  readonly deleteProfile: (profileId: string) => Promise<void>
   readonly suggestProfiles: (input: SuggestProfilesInput) => Promise<readonly SuggestedProfile[]>
 }
 

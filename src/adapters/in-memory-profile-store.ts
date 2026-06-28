@@ -29,6 +29,10 @@ export class InMemoryProfileStore implements ProfileStore {
     this.profiles.set(profile.id, profile)
   }
 
+  async deleteProfile(profileId: string): Promise<void> {
+    this.profiles.delete(profileId)
+  }
+
   async suggestProfiles(input: SuggestProfilesInput): Promise<readonly SuggestedProfile[]> {
     return suggestProfilesFromChangeSet(
       Array.from(this.profiles.values()),
