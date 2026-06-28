@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import type {
   ReviewFeedbackItem,
   ReviewFeedbackState,
@@ -40,7 +39,6 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
 ]
 
 export function FeedbackWorkspace({ feedback }: FeedbackWorkspaceProps) {
-  const [selectedId, setSelectedId] = useState(feedback[0]?.id ?? "")
   const [stateFilter, setStateFilter] =
     useState<(typeof stateOptions)[number]>("all")
   const [severityFilter, setSeverityFilter] =
@@ -82,84 +80,66 @@ export function FeedbackWorkspace({ feedback }: FeedbackWorkspaceProps) {
     })
   }, [feedback, profileFilter, query, severityFilter, stateFilter, typeFilter])
 
-  const selectedFeedback =
-    filteredFeedback.find((item) => item.id === selectedId) ??
-    filteredFeedback[0] ??
-    feedback[0]
-
   return (
-    <section className="grid gap-4 lg:grid-cols-10">
-      <div className="border border-border bg-card lg:col-span-3">
-        <div className="border-b border-border p-4">
+    <section className="border border-border bg-card">
+      <div className="flex flex-col gap-4 border-b border-border p-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">
             Feedback
           </p>
           <h2 className="mt-1 text-lg font-semibold">
             {filteredFeedback.length} findings
           </h2>
-          <div className="mt-4 space-y-2">
-            <Input
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Filter feedback"
-              value={query}
-            />
-            <FilterSelect
-              label="State"
-              onChange={setStateFilter}
-              options={stateOptions}
-              value={stateFilter}
-            />
-            <FilterSelect
-              label="Severity"
-              onChange={setSeverityFilter}
-              options={severityOptions}
-              value={severityFilter}
-            />
-            <FilterSelect
-              label="Profile"
-              onChange={setProfileFilter}
-              options={["all", ...profileOptions]}
-              value={profileFilter}
-            />
-            <FilterSelect
-              label="Type"
-              onChange={setTypeFilter}
-              options={["all", "inline", "summary"]}
-              value={typeFilter}
-            />
-          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Full feedback comments shown one after another.
+          </p>
         </div>
 
-        <div className="max-h-screen overflow-y-auto">
-          {filteredFeedback.map((item) => (
-            <button
-              className="block w-full border-b border-border p-4 text-left hover:bg-muted"
-              key={item.id}
-              onClick={() => setSelectedId(item.id)}
-              type="button"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-medium uppercase text-muted-foreground">
-                  {item.severity}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {item.state}
-                </span>
-              </div>
-              <p className="mt-2 text-sm font-medium">{item.title}</p>
-              <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                {item.file}
-              </p>
-            </button>
-          ))}
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          <Input
+            className="md:col-span-2 xl:col-span-1"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter feedback"
+            value={query}
+          />
+          <FilterSelect
+            label="State"
+            onChange={setStateFilter}
+            options={stateOptions}
+            value={stateFilter}
+          />
+          <FilterSelect
+            label="Severity"
+            onChange={setSeverityFilter}
+            options={severityOptions}
+            value={severityFilter}
+          />
+          <FilterSelect
+            label="Profile"
+            onChange={setProfileFilter}
+            options={["all", ...profileOptions]}
+            value={profileFilter}
+          />
+          <FilterSelect
+            label="Type"
+            onChange={setTypeFilter}
+            options={["all", "inline", "summary"]}
+            value={typeFilter}
+          />
         </div>
       </div>
 
-      {selectedFeedback ? (
-        <FeedbackDetail feedback={selectedFeedback} />
+      {filteredFeedback.length > 0 ? (
+        <div className="space-y-4 bg-muted/40 p-4">
+          {filteredFeedback.map((item, index) => (
+            <FeedbackCard feedback={item} index={index + 1} key={item.id} />
+          ))}
+        </div>
       ) : (
-        <div className="border border-border bg-card p-6 lg:col-span-7">
-          <p className="text-sm text-muted-foreground">No feedback selected.</p>
+        <div className="p-6">
+          <p className="text-sm text-muted-foreground">
+            No feedback matches the current filters.
+          </p>
         </div>
       )}
     </section>
@@ -182,7 +162,10 @@ function FilterSelect<T extends string>({
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <Select onValueChange={(nextValue) => onChange(nextValue as T)} value={value}>
+      <Select
+        onValueChange={(nextValue) => onChange(nextValue as T)}
+        value={value}
+      >
         <SelectTrigger>
           <SelectValue />
         </SelectTrigger>
@@ -198,28 +181,35 @@ function FilterSelect<T extends string>({
   )
 }
 
-type FeedbackDetailProps = {
+type FeedbackCardProps = {
   feedback: ReviewFeedbackItem
+  index: number
 }
 
-function FeedbackDetail({ feedback }: FeedbackDetailProps) {
+function FeedbackCard({ feedback, index }: FeedbackCardProps) {
   return (
-    <div className="border border-border bg-card lg:col-span-7">
-      <div className="border-b border-border p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              {feedback.profileName} profile
-            </p>
-            <h2 className="mt-1 text-xl font-semibold">{feedback.title}</h2>
-            <p className="mt-2 font-mono text-xs text-muted-foreground">
+    <article className="border border-border bg-card shadow-sm">
+      <div className="border-b border-border bg-muted/30 p-5">
+        <div className="mb-3 flex items-center gap-3">
+          <span className="border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground">
+            Feedback #{index}
+          </span>
+          <span className="text-xs font-medium uppercase text-muted-foreground">
+            {feedback.profileName} profile
+          </span>
+        </div>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-xl font-semibold">{feedback.title}</h3>
+            <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
               {feedback.file}
               {feedback.line ? `:${feedback.line}` : ""}
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <Badge variant="secondary">{feedback.severity}</Badge>
             <Badge variant="outline">{feedback.state}</Badge>
+            <Badge variant="outline">{feedback.type}</Badge>
             {feedback.limitedContext ? (
               <Badge variant="secondary">limited context</Badge>
             ) : null}
@@ -227,29 +217,20 @@ function FeedbackDetail({ feedback }: FeedbackDetailProps) {
         </div>
       </div>
 
-      <div className="grid gap-5 p-5 xl:grid-cols-2">
-        <div className="space-y-4">
+      <div className="p-5">
+        <div className="grid gap-5 xl:grid-cols-2">
           <DetailBlock title="Generated feedback">
             <p>{feedback.body}</p>
           </DetailBlock>
 
-          <DetailBlock title="Suggested action">
-            <p>{feedback.suggestedAction}</p>
-          </DetailBlock>
-
-          <DetailBlock title="Code context">
-            <div className="border border-border bg-muted p-3 font-mono text-xs">
-              {feedback.quotedCode ?? "Summary feedback has no inline quote."}
+          <DetailBlock title="Editable comment">
+            <div className="min-h-24 border border-input bg-background p-3 text-sm leading-6">
+              {feedback.editableComment}
             </div>
           </DetailBlock>
-        </div>
 
-        <div className="space-y-4">
-          <DetailBlock title="Editable comment">
-            <Textarea
-              className="min-h-40 resize-none"
-              defaultValue={feedback.editableComment}
-            />
+          <DetailBlock title="Suggested action">
+            <p>{feedback.suggestedAction}</p>
           </DetailBlock>
 
           <DetailBlock title="Evidence">
@@ -262,6 +243,12 @@ function FeedbackDetail({ feedback }: FeedbackDetailProps) {
             </ul>
           </DetailBlock>
 
+          <DetailBlock title="Code context">
+            <div className="overflow-x-auto border border-border bg-muted p-3 font-mono text-xs">
+              {feedback.quotedCode ?? "Summary feedback has no inline quote."}
+            </div>
+          </DetailBlock>
+
           <DetailBlock title="Limitations">
             <ul className="space-y-2">
               {feedback.limitations.map((item) => (
@@ -271,19 +258,19 @@ function FeedbackDetail({ feedback }: FeedbackDetailProps) {
               ))}
             </ul>
           </DetailBlock>
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm">Accept</Button>
-            <Button size="sm" variant="secondary">
-              Mark edited
-            </Button>
-            <Button size="sm" variant="outline">
-              Dismiss
-            </Button>
-          </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button size="sm">Accept</Button>
+          <Button size="sm" variant="secondary">
+            Mark edited
+          </Button>
+          <Button size="sm" variant="outline">
+            Dismiss
+          </Button>
         </div>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -295,9 +282,9 @@ type DetailBlockProps = {
 function DetailBlock({ title, children }: DetailBlockProps) {
   return (
     <div>
-      <h3 className="text-xs font-medium uppercase text-muted-foreground">
+      <h4 className="text-xs font-medium uppercase text-muted-foreground">
         {title}
-      </h3>
+      </h4>
       <div className="mt-2 text-sm leading-6">{children}</div>
     </div>
   )
