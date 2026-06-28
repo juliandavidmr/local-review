@@ -103,6 +103,18 @@ async fn run_review_session(
         .count() as u32
         * active_profiles.len() as u32;
     let mut cancelled = false;
+    eprintln!(
+        "[local-review-pass] review_start review_id={} provider={} model={} files={} profiles={} total_passes={}",
+        review_id,
+        provider.id,
+        provider
+            .selected_model_id
+            .as_deref()
+            .unwrap_or("unselected"),
+        change_set.files.len(),
+        active_profiles.len(),
+        total_passes
+    );
 
     for file in change_set.files.iter().filter(|file| !file.is_generated) {
         for profile in &active_profiles {
@@ -120,16 +132,41 @@ async fn run_review_session(
                 break;
             }
 
+            eprintln!(
+                "[local-review-pass] pass_start review_id={} pass={} file={} profile={} additions={} deletions={}",
+                review_id,
+                pass_index + 1,
+                file.path,
+                profile.name,
+                file.additions,
+                file.deletions
+            );
             let mut pass_feedback = Vec::new();
             match providers::run_review_pass(&provider, profile, &change_set, file, pass_index)
                 .await
             {
                 Ok(feedback_from_pass) => {
+                    eprintln!(
+                        "[local-review-pass] pass_ok review_id={} pass={} file={} profile={} feedback_count={}",
+                        review_id,
+                        pass_index + 1,
+                        file.path,
+                        profile.name,
+                        feedback_from_pass.len()
+                    );
                     completed_passes += 1;
                     pass_feedback = feedback_from_pass.clone();
                     feedback.extend(feedback_from_pass);
                 }
-                Err(_) => {
+                Err(error) => {
+                    eprintln!(
+                        "[local-review-pass] pass_error review_id={} pass={} file={} profile={} error={}",
+                        review_id,
+                        pass_index + 1,
+                        file.path,
+                        profile.name,
+                        error
+                    );
                     failed_passes += 1;
                 }
             }
@@ -150,6 +187,10 @@ async fn run_review_session(
         }
     }
 
+    eprintln!(
+        "[local-review-pass] review_finish review_id={} completed_passes={} failed_passes={} cancelled={}",
+        review_id, completed_passes, failed_passes, cancelled
+    );
     clear_review_cancellation(&review_id);
 
     let inline_comments = feedback

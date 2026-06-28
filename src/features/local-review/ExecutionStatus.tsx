@@ -6,9 +6,10 @@ type ExecutionStatusProps = {
 }
 
 export function ExecutionStatus({ execution }: ExecutionStatusProps) {
+  const processedPasses = execution.completedPasses + execution.guardrailHits
   const completedPercent =
     execution.totalPasses > 0
-      ? Math.round((execution.completedPasses / execution.totalPasses) * 100)
+      ? Math.round((processedPasses / execution.totalPasses) * 100)
       : 0
   const hasNoChangedFiles =
     execution.status === "completed" &&
@@ -32,8 +33,13 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
         </div>
         <div className="text-right text-sm">
           <p className="font-medium">
-            {execution.completedPasses} of {execution.totalPasses} passes
+            {processedPasses} of {execution.totalPasses} passes processed
           </p>
+          {execution.guardrailHits > 0 ? (
+            <p className="text-destructive">
+              {execution.guardrailHits} pass failures
+            </p>
+          ) : null}
           <p className="text-muted-foreground">{completedPercent}% complete</p>
         </div>
       </div>
@@ -44,8 +50,8 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
         <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
           <p className="font-medium">Review is running.</p>
           <p className="mt-1 text-muted-foreground">
-            The workspace is open while model passes run. Generated feedback will
-            appear here when the review command completes.
+            The workspace is open while model passes run. Feedback appears as
+            soon as each pass returns usable comments.
           </p>
         </div>
       ) : isCancelled ? (

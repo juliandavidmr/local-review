@@ -18,6 +18,7 @@ import type {
 
 type FeedbackWorkspaceProps = {
   feedback: ReviewFeedbackItem[]
+  isRunning?: boolean
 }
 
 const stateOptions: Array<"all" | ReviewFeedbackState> = [
@@ -38,7 +39,10 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
   "nitpick",
 ]
 
-export function FeedbackWorkspace({ feedback }: FeedbackWorkspaceProps) {
+export function FeedbackWorkspace({
+  feedback,
+  isRunning = false,
+}: FeedbackWorkspaceProps) {
   const [stateFilter, setStateFilter] =
     useState<(typeof stateOptions)[number]>("all")
   const [severityFilter, setSeverityFilter] =
@@ -138,7 +142,9 @@ export function FeedbackWorkspace({ feedback }: FeedbackWorkspaceProps) {
       ) : (
         <div className="p-6">
           <p className="text-sm text-muted-foreground">
-            No feedback matches the current filters.
+            {isRunning
+              ? "No feedback yet. Comments will appear here as soon as each review pass finds them."
+              : "No feedback matches the current filters."}
           </p>
         </div>
       )}

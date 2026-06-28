@@ -34,17 +34,29 @@ struct AgentFeedbackOutput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentFeedbackItem {
+    #[serde(default)]
     title: String,
     feedback_type: Option<String>,
+    #[serde(default = "default_feedback_severity")]
     severity: String,
     file: Option<String>,
     line: Option<u32>,
+    #[serde(default)]
     body: String,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
     suggested_action: String,
     confidence: Option<String>,
+    #[serde(default)]
     evidence: Vec<String>,
+    #[serde(default)]
     limitations: Vec<String>,
     quoted_code: Option<String>,
+}
+
+fn default_feedback_severity() -> String {
+    "suggestion".to_string()
 }
 
 pub async fn check_connection(
@@ -201,7 +213,7 @@ fn review_prompt(
     file: &ChangedFile,
 ) -> String {
     format!(
-        "Review one file from a Local Review session.\n\nProfile: {}\nCriteria: {}\nProfile prompt: {}\nRepository: {}\nFile: {}\nAdditions: {}\nDeletions: {}\n\nRules:\n- Review only the provided changed file/hunks.\n- Produce concise, actionable feedback anchored to the change set.\n- Return no feedback if there is no meaningful issue.\n- Inline feedback must use a line present in the changed hunk.\n- Do not invent files, tests, or commands.\n\nChanged hunks:\n{}\n\nReturn JSON with this shape: {{\"feedback\":[...]}}.",
+        "Review one file from a Local Review session.\n\nProfile: {}\nCriteria: {}\nProfile prompt: {}\nRepository: {}\nFile: {}\nAdditions: {}\nDeletions: {}\n\nRules:\n- Review only the provided changed file/hunks.\n- Produce concise, actionable feedback anchored to the change set.\n- Return no feedback if there is no meaningful issue.\n- Inline feedback must use a line present in the changed hunk.\n- Do not invent files, tests, or commands.\n- Return only JSON. Do not wrap it in markdown fences.\n\nEach feedback item must include these keys:\n- title: short string\n- severity: one of blocking, important, suggestion, question, nitpick\n- line: changed new-line number when inline, otherwise omit\n- body: complete review comment\n- suggestedAction: concrete action for the author\n- evidence: array of short strings\n- limitations: array of short strings, empty array if none\n\nExample response:\n{{\"feedback\":[{{\"title\":\"Validate accepted MIME types\",\"severity\":\"suggestion\",\"line\":2,\"body\":\"The MIME type list is now manually maintained, so adding an invalid value later would only fail at runtime.\",\"suggestedAction\":\"Type the list with a MIME-type union or derive it from a single validated source.\",\"evidence\":[\"The changed constant defines accepted video MIME types.\"],\"limitations\":[]}}]}}\n\nChanged hunks:\n{}\n\nReturn JSON now.",
         profile.name,
         profile.criteria.join(", "),
         profile.prompt,
@@ -262,6 +274,15 @@ fn feedback_from_agent_item(
     index: usize,
 ) -> ReviewFeedback {
     let requested_file = item.file.unwrap_or_else(|| file.path.clone());
+    let body = first_non_empty(&[item.body, item.message])
+        .unwrap_or_else(|| "The model returned feedback without a body.".to_string());
+    let title = if item.title.trim().is_empty() {
+        summarize_title(&body)
+    } else {
+        item.title
+    };
+    let suggested_action = first_non_empty(&[item.suggested_action])
+        .unwrap_or_else(|| "Review this finding and decide whether to adjust the changed code.".to_string());
     let location = item
         .line
         .filter(|line| line_exists_in_file(file, *line))
@@ -289,7 +310,7 @@ fn feedback_from_agent_item(
 
     ReviewFeedback {
         id: format!("{}-{}-{}", pass_id, file.path.replace('/', "-"), index + 1),
-        title: item.title,
+        title,
         feedback_type,
         severity: parse_severity(&item.severity),
         state: FeedbackState::Draft,
@@ -298,9 +319,9 @@ fn feedback_from_agent_item(
         pass_id: pass_id.to_string(),
         file: requested_file,
         line: location.as_ref().map(|value| value.start_line),
-        body: item.body.clone(),
-        editable_comment: item.body,
-        suggested_action: item.suggested_action,
+        body: body.clone(),
+        editable_comment: body,
+        suggested_action,
         confidence: item.confidence.unwrap_or_else(|| "medium".to_string()),
         limited_context,
         quoted_code: item.quoted_code,
@@ -311,6 +332,27 @@ fn feedback_from_agent_item(
         model_provider: provider.id.clone(),
         model: model.to_string(),
         created_at: created_at.to_string(),
+    }
+}
+
+fn first_non_empty(values: &[String]) -> Option<String> {
+    values
+        .iter()
+        .find(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+}
+
+fn summarize_title(body: &str) -> String {
+    let first_sentence = body
+        .split(['.', '\n'])
+        .next()
+        .unwrap_or("Review generated feedback")
+        .trim();
+
+    if first_sentence.is_empty() {
+        "Review generated feedback".to_string()
+    } else {
+        first_sentence.chars().take(80).collect()
     }
 }
 

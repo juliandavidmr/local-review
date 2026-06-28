@@ -227,7 +227,7 @@ export function LocalReviewWorkspace() {
         />
         <SetupOverview session={session} />
         <ExecutionStatus execution={session.execution} />
-        <FeedbackWorkspace feedback={session.feedback} />
+        <FeedbackWorkspace feedback={session.feedback} isRunning={running} />
         <PublicationSummary publication={session.publication} />
       </div>
     </WorkspaceShell>
