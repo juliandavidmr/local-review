@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { FolderOpen, Plus } from "@phosphor-icons/react"
+import { ArrowsClockwise, FolderOpen, Plus } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,8 @@ import type {
   ReviewProfileItem,
   ReviewProfileScopeKind,
 } from "@/domain/workspace-view"
+
+import { useProviderModelProbe } from "./useProviderModelProbe"
 
 type InitialSetupScreenProps = {
   error?: string | null
@@ -61,6 +63,8 @@ export function InitialSetupScreen({
     prompt: "",
     scopeKind: "global",
   })
+  const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
+    useProviderModelProbe(settings, setSettings)
   const activeProfiles = profiles.filter((profile) => profile.selected)
   const selectedProvider = settings.modelProviders.find(
     (provider) => provider.enabled && provider.selectedModelId,
@@ -198,69 +202,127 @@ export function InitialSetupScreen({
 
             <SetupBlock title="Provider and model">
               <div className="grid gap-3 md:grid-cols-2">
-                {settings.modelProviders.map((provider) => (
-                  <div className="border border-border p-3" key={provider.id}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{provider.name}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Pre-filled local endpoint
-                        </p>
+                {settings.modelProviders.map((provider) => {
+                  const fetchedModels = modelsByProvider[provider.id] ?? []
+                  const presetModels =
+                    quickModels[provider.id as keyof typeof quickModels] ?? []
+                  const modelOptions = [
+                    ...fetchedModels.map((model) => ({
+                      label: model.displayName,
+                      value: model.modelId,
+                    })),
+                    ...presetModels
+                      .filter(
+                        (modelId) =>
+                          !fetchedModels.some(
+                            (model) => model.modelId === modelId,
+                          ),
+                      )
+                      .map((modelId) => ({ label: modelId, value: modelId })),
+                  ]
+                  const status = statuses[provider.id]
+                  const isLoading = loadingProviderId === provider.id
+                  const isLmStudio = provider.kind === "lm_studio"
+
+                  return (
+                    <div className="border border-border p-3" key={provider.id}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{provider.name}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {isLmStudio
+                              ? "LM Studio local OpenAI-compatible server"
+                              : "Pre-filled local endpoint"}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={provider.enabled}
+                          onCheckedChange={(enabled) =>
+                            setSettings((current) =>
+                              enabled
+                                ? selectSingleModelProvider(current, provider.id)
+                                : updateModelProviderSettings(
+                                    current,
+                                    provider.id,
+                                    (currentProvider) => ({
+                                      ...currentProvider,
+                                      enabled: false,
+                                      selectedModelId: undefined,
+                                      useForHumanToneRewrite: false,
+                                    }),
+                                  ),
+                            )
+                          }
+                        />
                       </div>
-                      <Switch
-                        checked={provider.enabled}
-                        onCheckedChange={(enabled) =>
-                          setSettings((current) =>
-                            enabled
-                              ? selectSingleModelProvider(current, provider.id)
-                              : updateModelProviderSettings(
-                                  current,
-                                  provider.id,
-                                  (currentProvider) => ({
-                                    ...currentProvider,
-                                    enabled: false,
-                                    selectedModelId: undefined,
-                                    useForHumanToneRewrite: false,
-                                  }),
-                                ),
-                          )
-                        }
-                      />
+                      <div className="mt-3 space-y-2">
+                        <Label htmlFor={`${provider.id}-setup-url`}>
+                          Base URL
+                        </Label>
+                        <Input
+                          id={`${provider.id}-setup-url`}
+                          onChange={(event) =>
+                            updateProviderBaseUrl(
+                              provider.id,
+                              event.target.value,
+                            )
+                          }
+                          value={provider.baseUrl}
+                        />
+                      </div>
+                      <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
+                        <div className="w-full space-y-2">
+                          <Label>Model</Label>
+                          <Select
+                            onValueChange={(modelId) =>
+                              selectProvider(provider.id, modelId)
+                            }
+                            value={provider.selectedModelId ?? ""}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select model" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {modelOptions.map((model) => (
+                                <SelectItem key={model.value} value={model.value}>
+                                  {model.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            className="w-full md:w-auto"
+                            disabled={isLoading}
+                            onClick={() => refreshProvider(provider)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <ArrowsClockwise className="size-4" />
+                            {isLoading
+                              ? "Checking..."
+                              : isLmStudio
+                                ? "Test LM Studio"
+                                : "Load models"}
+                          </Button>
+                        </div>
+                      </div>
+                      {status ? (
+                        <p
+                          className={
+                            status.ok
+                              ? "mt-3 text-xs text-muted-foreground"
+                              : "mt-3 text-xs text-destructive"
+                          }
+                        >
+                          {status.ok ? "Connected" : "Unavailable"}:{" "}
+                          {status.message}
+                        </p>
+                      ) : null}
                     </div>
-                    <div className="mt-3 space-y-2">
-                      <Label htmlFor={`${provider.id}-setup-url`}>Base URL</Label>
-                      <Input
-                        id={`${provider.id}-setup-url`}
-                        onChange={(event) =>
-                          updateProviderBaseUrl(provider.id, event.target.value)
-                        }
-                        value={provider.baseUrl}
-                      />
-                    </div>
-                    <div className="mt-3 space-y-2">
-                      <Label>Quick model</Label>
-                      <Select
-                        onValueChange={(modelId) =>
-                          selectProvider(provider.id, modelId)
-                        }
-                        value={provider.selectedModelId ?? ""}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {quickModels[provider.id as keyof typeof quickModels].map(
-                            (modelId) => (
-                              <SelectItem key={modelId} value={modelId}>
-                                {modelId}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </SetupBlock>
 

@@ -1,11 +1,6 @@
-import { useState } from "react"
 import { ArrowsClockwise, Plugs } from "@phosphor-icons/react"
 
-import {
-  checkProviderConnection,
-  listProviderModels,
-  saveProviderSettings,
-} from "@/adapters/tauri-local-review-api"
+import { saveProviderSettings } from "@/adapters/tauri-local-review-api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,10 +18,10 @@ import {
   updateMcpSourceSettings,
   updateModelProviderSettings,
   type ModelProviderSettings,
-  type ProviderConnectionStatus,
   type ProviderSettings,
 } from "@/domain"
-import type { ModelDescriptor } from "@/ports"
+
+import { useProviderModelProbe } from "./useProviderModelProbe"
 
 type ProviderSettingsPanelProps = {
   settings: ProviderSettings
@@ -37,37 +32,12 @@ export function ProviderSettingsPanel({
   settings,
   onChange,
 }: ProviderSettingsPanelProps) {
-  const [modelsByProvider, setModelsByProvider] = useState<
-    Record<string, readonly ModelDescriptor[]>
-  >({})
-  const [statuses, setStatuses] = useState<Record<string, ProviderConnectionStatus>>({})
+  const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
+    useProviderModelProbe(settings, onChange, { persistSettings: true })
   const selectedModelProvider = settings.modelProviders.find(
     (provider) => provider.enabled,
   )
   const enabledMcpSources = settings.mcpSources.filter((source) => source.enabled).length
-
-  async function refreshProvider(provider: ModelProviderSettings) {
-    const status = await checkProviderConnection(provider)
-    const models = status.ok ? await listProviderModels(provider) : []
-
-    setStatuses((current) => ({
-      ...current,
-      [provider.id]: status,
-    }))
-    setModelsByProvider((current) => ({
-      ...current,
-      [provider.id]: models,
-    }))
-
-    if (!provider.selectedModelId && models[0]) {
-      const nextSettings = selectSingleModelProvider(
-        settings,
-        provider.id,
-        models[0].modelId,
-      )
-      onChange(await saveProviderSettings(nextSettings))
-    }
-  }
 
   function updateModelProvider(
     providerId: string,
@@ -111,6 +81,21 @@ export function ProviderSettingsPanel({
         {settings.modelProviders.map((provider) => {
           const status = statuses[provider.id]
           const models = modelsByProvider[provider.id] ?? []
+          const isLoading = loadingProviderId === provider.id
+          const isLmStudio = provider.kind === "lm_studio"
+          const modelOptions =
+            provider.selectedModelId &&
+            !models.some((model) => model.modelId === provider.selectedModelId)
+              ? [
+                  {
+                    available: true,
+                    displayName: provider.selectedModelId,
+                    modelId: provider.selectedModelId,
+                    providerId: provider.id,
+                  },
+                  ...models,
+                ]
+              : models
 
           return (
             <article className="border border-border bg-card p-4" key={provider.id}>
@@ -158,7 +143,7 @@ export function ProviderSettingsPanel({
                 <div className="space-y-2">
                   <Label>Model</Label>
                   <Select
-                    disabled={models.length === 0}
+                    disabled={modelOptions.length === 0 || isLoading}
                     onValueChange={(selectedModelId) =>
                       void saveProviderSettings(
                         selectSingleModelProvider(
@@ -171,10 +156,14 @@ export function ProviderSettingsPanel({
                     value={provider.selectedModelId ?? ""}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="No model loaded" />
+                      <SelectValue
+                        placeholder={
+                          isLoading ? "Loading models" : "No model loaded"
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {models.map((model) => (
+                      {modelOptions.map((model) => (
                         <SelectItem key={model.modelId} value={model.modelId}>
                           {model.displayName}
                         </SelectItem>
@@ -186,11 +175,16 @@ export function ProviderSettingsPanel({
                   <Button
                     className="w-full"
                     onClick={() => refreshProvider(provider)}
+                    disabled={isLoading}
                     size="sm"
                     variant="outline"
                   >
                     <ArrowsClockwise className="size-4" />
-                    Test and load models
+                    {isLoading
+                      ? "Checking..."
+                      : isLmStudio
+                        ? "Test LM Studio"
+                        : "Test and load models"}
                   </Button>
                 </div>
               </div>
@@ -208,7 +202,13 @@ export function ProviderSettingsPanel({
               </div>
 
               {status ? (
-                <p className="mt-3 text-xs text-muted-foreground">
+                <p
+                  className={
+                    status.ok
+                      ? "mt-3 text-xs text-muted-foreground"
+                      : "mt-3 text-xs text-destructive"
+                  }
+                >
                   {status.ok ? "Connected" : "Unavailable"}: {status.message}
                 </p>
               ) : null}

@@ -6,9 +6,16 @@ type ExecutionStatusProps = {
 }
 
 export function ExecutionStatus({ execution }: ExecutionStatusProps) {
-  const completedPercent = Math.round(
-    (execution.completedPasses / execution.totalPasses) * 100,
-  )
+  const completedPercent =
+    execution.totalPasses > 0
+      ? Math.round((execution.completedPasses / execution.totalPasses) * 100)
+      : 0
+  const hasNoChangedFiles =
+    execution.status === "completed" &&
+    execution.changedFiles === 0 &&
+    execution.modifiedLines === 0
+  const hasNoPasses =
+    execution.status === "completed" && execution.totalPasses === 0
 
   return (
     <section className="border border-border bg-card p-4">
@@ -30,6 +37,25 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
       </div>
 
       <Progress className="mt-4" value={completedPercent} />
+
+      {hasNoChangedFiles ? (
+        <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
+          <p className="font-medium">No changes were available to review.</p>
+          <p className="mt-1 text-muted-foreground">
+            The selected repository working tree produced 0 changed files, so no
+            model passes were started. Make a local change, select a repository
+            with pending changes, or start a new review from the header.
+          </p>
+        </div>
+      ) : hasNoPasses ? (
+        <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
+          <p className="font-medium">No review passes were scheduled.</p>
+          <p className="mt-1 text-muted-foreground">
+            Check that at least one active profile applies to the selected
+            change set.
+          </p>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
         <Metric label="Changed files" value={execution.changedFiles} />

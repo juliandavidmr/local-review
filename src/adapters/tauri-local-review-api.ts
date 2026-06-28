@@ -53,7 +53,7 @@ export async function buildWorkingTreeChangeSet(
   return invoke("build_change_set", {
     source: {
       type: "working_tree",
-      repositoryPath,
+      repository_path: repositoryPath,
     },
   })
 }

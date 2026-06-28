@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { ArrowCounterClockwise } from "@phosphor-icons/react"
 import {
   buildWorkingTreeChangeSet,
   loadProfiles,
@@ -10,6 +11,7 @@ import {
   type ReviewWorkspaceSession,
 } from "@/adapters/tauri-local-review-api"
 import { WorkspaceShell } from "@/components/layout/WorkspaceShell"
+import { Button } from "@/components/ui/button"
 import { defaultProviderSettings, type ProviderSettings } from "@/domain"
 import type { ReviewProfileItem } from "@/domain/workspace-view"
 
@@ -123,6 +125,12 @@ export function LocalReviewWorkspace() {
 
   return (
     <WorkspaceShell
+      actions={
+        <Button onClick={() => setSession(null)} variant="outline">
+          <ArrowCounterClockwise className="size-4" />
+          New review
+        </Button>
+      }
       subtitle="Open a repository, review a change set, curate generated feedback, and publish through gh."
       title="Review Workspace"
     >

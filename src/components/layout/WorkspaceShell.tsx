@@ -3,12 +3,14 @@ import type { ReactNode } from "react"
 type WorkspaceShellProps = {
   title: string
   subtitle: string
+  actions?: ReactNode
   children: ReactNode
 }
 
 export function WorkspaceShell({
   title,
   subtitle,
+  actions,
   children,
 }: WorkspaceShellProps) {
   return (
@@ -22,10 +24,7 @@ export function WorkspaceShell({
             <h1 className="mt-1 text-xl font-semibold">{title}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           </div>
-          <div className="text-right text-xs text-muted-foreground">
-            <p>Mock session</p>
-            <p>Local-first desktop skeleton</p>
-          </div>
+          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
       </div>
       <div className="mx-auto max-w-screen-2xl px-6 py-6">{children}</div>
