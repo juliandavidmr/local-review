@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type {
   ReviewProfileItem,
   ReviewProfileScopeKind,
-} from "@/data/localReviewMockData"
+} from "@/domain/workspace-view"
 
 type ProfileManagerProps = {
   profiles: ReviewProfileItem[]

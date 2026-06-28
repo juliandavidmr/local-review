@@ -1,7 +1,7 @@
-import type { ReviewSessionMock } from "@/data/localReviewMockData"
+import type { ReviewWorkspaceView } from "@/domain/workspace-view"
 
 type SetupOverviewProps = {
-  session: ReviewSessionMock
+  session: ReviewWorkspaceView
 }
 
 export function SetupOverview({ session }: SetupOverviewProps) {

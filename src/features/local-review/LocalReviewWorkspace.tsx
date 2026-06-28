@@ -1,7 +1,17 @@
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
+import {
+  buildWorkingTreeChangeSet,
+  loadProfiles,
+  loadProviderSettings,
+  openRepository,
+  runReviewSession,
+  saveProviderSettings,
+  saveProfile,
+  type ReviewWorkspaceSession,
+} from "@/adapters/tauri-local-review-api"
 import { WorkspaceShell } from "@/components/layout/WorkspaceShell"
-import { localReviewMockSession } from "@/data/localReviewMockData"
-import type { ProviderSettings } from "@/domain"
+import { defaultProviderSettings, type ProviderSettings } from "@/domain"
+import type { ReviewProfileItem } from "@/domain/workspace-view"
 
 import { ExecutionStatus } from "./ExecutionStatus"
 import { FeedbackWorkspace } from "./FeedbackWorkspace"
@@ -12,56 +22,99 @@ import { PublicationSummary } from "./PublicationSummary"
 import { SetupOverview } from "./SetupOverview"
 
 export function LocalReviewWorkspace() {
-  const [setupComplete, setSetupComplete] = useState(false)
-  const [repositoryPath, setRepositoryPath] = useState("")
-  const [profiles, setProfiles] = useState(
-    localReviewMockSession.profiles.map((profile) => ({
-      ...profile,
-      selected: false,
-    })),
+  const [session, setSession] = useState<ReviewWorkspaceSession | null>(null)
+  const [profiles, setProfiles] = useState<ReviewProfileItem[]>([])
+  const [providerSettings, setProviderSettings] = useState<ProviderSettings>(
+    defaultProviderSettings,
   )
-  const [providerSettings, setProviderSettings] = useState(
-    localReviewMockSession.providerSettings,
-  )
-  const session = useMemo(
-    () => ({
-      ...localReviewMockSession,
-      repository: {
-        ...localReviewMockSession.repository,
-        path: repositoryPath || localReviewMockSession.repository.path,
-      },
-      profiles,
-      providerSettings,
-      execution: {
-        ...localReviewMockSession.execution,
-        totalPasses:
-          providerSettings.execution.maxParallelReviewPasses *
-          localReviewMockSession.execution.changedFiles,
-      },
-    }),
-    [profiles, providerSettings, repositoryPath],
-  )
+  const [loading, setLoading] = useState(true)
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function loadInitialState() {
+      try {
+        const [storedProfiles, storedSettings] = await Promise.all([
+          loadProfiles(),
+          loadProviderSettings(),
+        ])
+        setProfiles(storedProfiles)
+        setProviderSettings(storedSettings)
+      } catch (unknownError) {
+        setError(errorMessage(unknownError))
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void loadInitialState()
+  }, [])
 
   function updateProfile(
     profileId: string,
     update: (profile: (typeof profiles)[number]) => (typeof profiles)[number],
   ) {
     setProfiles((current) =>
-      current.map((profile) =>
-        profile.id === profileId ? update(profile) : profile,
-      ),
+      current.map((profile) => {
+        const nextProfile = profile.id === profileId ? update(profile) : profile
+        if (nextProfile.id === profileId) {
+          void saveProfile(nextProfile)
+        }
+        return nextProfile
+      }),
     )
   }
 
-  if (!setupComplete) {
+  if (loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-muted/40 p-6">
+        <div className="border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading local review configuration...
+        </div>
+      </main>
+    )
+  }
+
+  if (!session) {
     return (
       <InitialSetupScreen
+        error={error}
         initialProfiles={profiles}
-        onComplete={(setup) => {
-          setRepositoryPath(setup.repositoryPath)
-          setProfiles(setup.profiles)
-          setProviderSettings(setup.providerSettings as ProviderSettings)
-          setSetupComplete(true)
+        isRunning={running}
+        onComplete={async (setup) => {
+          setRunning(true)
+          setError(null)
+          try {
+            const repository = await openRepository(setup.repositoryPath)
+            const changeSet = await buildWorkingTreeChangeSet(repository.path)
+            const savedSettings = await saveProviderSettings(
+              setup.providerSettings,
+            )
+            const profilesWithRepositoryScope = setup.profiles.map((profile) =>
+              profile.scopeKind === "repository"
+                ? { ...profile, scope: repository.path }
+                : profile,
+            )
+
+            for (const profile of profilesWithRepositoryScope) {
+              await saveProfile(profile)
+            }
+
+            const nextSession = await runReviewSession({
+              repository,
+              changeSet,
+              profiles: profilesWithRepositoryScope,
+              providerSettings: savedSettings,
+            })
+
+            setProfiles(profilesWithRepositoryScope)
+            setProviderSettings(savedSettings)
+            setSession(nextSession)
+          } catch (unknownError) {
+            setError(errorMessage(unknownError))
+          } finally {
+            setRunning(false)
+          }
         }}
         providerSettings={providerSettings}
       />
@@ -75,7 +128,12 @@ export function LocalReviewWorkspace() {
     >
       <div className="space-y-5">
         <ProviderSettingsPanel
-          onChange={setProviderSettings}
+          onChange={(settings) => {
+            setProviderSettings(settings)
+            if (session) {
+              setSession({ ...session, providerSettings: settings })
+            }
+          }}
           settings={providerSettings}
         />
         <ProfileManager
@@ -109,4 +167,8 @@ export function LocalReviewWorkspace() {
       </div>
     </WorkspaceShell>
   )
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

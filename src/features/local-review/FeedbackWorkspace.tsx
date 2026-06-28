@@ -14,7 +14,7 @@ import type {
   ReviewFeedbackItem,
   ReviewFeedbackState,
   ReviewSeverity,
-} from "@/data/localReviewMockData"
+} from "@/domain/workspace-view"
 
 type FeedbackWorkspaceProps = {
   feedback: ReviewFeedbackItem[]

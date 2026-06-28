@@ -1,7 +1,11 @@
 import { useState } from "react"
 import { ArrowsClockwise, Plugs } from "@phosphor-icons/react"
 
-import { createModelProviderAdapter } from "@/adapters"
+import {
+  checkProviderConnection,
+  listProviderModels,
+  saveProviderSettings,
+} from "@/adapters/tauri-local-review-api"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,9 +47,8 @@ export function ProviderSettingsPanel({
   const enabledMcpSources = settings.mcpSources.filter((source) => source.enabled).length
 
   async function refreshProvider(provider: ModelProviderSettings) {
-    const adapter = createModelProviderAdapter(provider)
-    const status = await adapter.checkConnection()
-    const models = status.ok ? await adapter.listModels() : []
+    const status = await checkProviderConnection(provider)
+    const models = status.ok ? await listProviderModels(provider) : []
 
     setStatuses((current) => ({
       ...current,
@@ -57,7 +60,12 @@ export function ProviderSettingsPanel({
     }))
 
     if (!provider.selectedModelId && models[0]) {
-      onChange(selectSingleModelProvider(settings, provider.id, models[0].modelId))
+      const nextSettings = selectSingleModelProvider(
+        settings,
+        provider.id,
+        models[0].modelId,
+      )
+      onChange(await saveProviderSettings(nextSettings))
     }
   }
 
@@ -65,12 +73,16 @@ export function ProviderSettingsPanel({
     providerId: string,
     patch: Partial<ModelProviderSettings>,
   ) {
-    onChange(
-      updateModelProviderSettings(settings, providerId, (provider) => ({
+    const nextSettings = updateModelProviderSettings(
+      settings,
+      providerId,
+      (provider) => ({
         ...provider,
         ...patch,
-      })),
+      }),
     )
+    onChange(nextSettings)
+    void saveProviderSettings(nextSettings)
   }
 
   return (
@@ -112,7 +124,7 @@ export function ProviderSettingsPanel({
                 <Switch
                   checked={provider.enabled}
                   onCheckedChange={(enabled) =>
-                    onChange(
+                    void saveProviderSettings(
                       enabled
                         ? selectSingleModelProvider(settings, provider.id)
                         : updateModelProviderSettings(
@@ -125,7 +137,7 @@ export function ProviderSettingsPanel({
                               useForHumanToneRewrite: false,
                             }),
                           ),
-                    )
+                    ).then(onChange)
                   }
                 />
               </div>
@@ -148,13 +160,13 @@ export function ProviderSettingsPanel({
                   <Select
                     disabled={models.length === 0}
                     onValueChange={(selectedModelId) =>
-                      onChange(
+                      void saveProviderSettings(
                         selectSingleModelProvider(
                           settings,
                           provider.id,
                           selectedModelId,
                         ),
-                      )
+                      ).then(onChange)
                     }
                     value={provider.selectedModelId ?? ""}
                   >
@@ -227,14 +239,18 @@ export function ProviderSettingsPanel({
                 </span>
                 <Switch
                   checked={source.enabled}
-                  onCheckedChange={(enabled) =>
-                    onChange(
-                      updateMcpSourceSettings(settings, source.id, (current) => ({
+                  onCheckedChange={(enabled) => {
+                    const nextSettings = updateMcpSourceSettings(
+                      settings,
+                      source.id,
+                      (current) => ({
                         ...current,
                         enabled,
-                      })),
+                      }),
                     )
-                  }
+                    onChange(nextSettings)
+                    void saveProviderSettings(nextSettings)
+                  }}
                 />
               </label>
             ))}
@@ -249,8 +265,8 @@ export function ProviderSettingsPanel({
               <Input
                 id="parallel-passes"
                 min={1}
-                onChange={(event) =>
-                  onChange({
+                onChange={(event) => {
+                  const nextSettings = {
                     ...settings,
                     execution: {
                       ...settings.execution,
@@ -259,8 +275,10 @@ export function ProviderSettingsPanel({
                         Number(event.target.value) || 1,
                       ),
                     },
-                  })
-                }
+                  }
+                  onChange(nextSettings)
+                  void saveProviderSettings(nextSettings)
+                }}
                 type="number"
                 value={settings.execution.maxParallelReviewPasses}
               />
@@ -269,15 +287,17 @@ export function ProviderSettingsPanel({
               <span>Adaptive parallelism</span>
               <Switch
                 checked={settings.execution.adaptiveParallelismEnabled}
-                onCheckedChange={(adaptiveParallelismEnabled) =>
-                  onChange({
+                onCheckedChange={(adaptiveParallelismEnabled) => {
+                  const nextSettings = {
                     ...settings,
                     execution: {
                       ...settings.execution,
                       adaptiveParallelismEnabled,
                     },
-                  })
-                }
+                  }
+                  onChange(nextSettings)
+                  void saveProviderSettings(nextSettings)
+                }}
               />
             </label>
           </div>

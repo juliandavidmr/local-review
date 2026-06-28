@@ -1,8 +1,8 @@
 import { Progress } from "@/components/ui/progress"
-import type { ReviewSessionMock } from "@/data/localReviewMockData"
+import type { ReviewWorkspaceView } from "@/domain/workspace-view"
 
 type ExecutionStatusProps = {
-  execution: ReviewSessionMock["execution"]
+  execution: ReviewWorkspaceView["execution"]
 }
 
 export function ExecutionStatus({ execution }: ExecutionStatusProps) {

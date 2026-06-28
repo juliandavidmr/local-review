@@ -21,16 +21,18 @@ import {
 import type {
   ReviewProfileItem,
   ReviewProfileScopeKind,
-} from "@/data/localReviewMockData"
+} from "@/domain/workspace-view"
 
 type InitialSetupScreenProps = {
+  error?: string | null
   initialProfiles: ReviewProfileItem[]
+  isRunning?: boolean
   providerSettings: ProviderSettings
   onComplete: (setup: {
     repositoryPath: string
     profiles: ReviewProfileItem[]
     providerSettings: ProviderSettings
-  }) => void
+  }) => void | Promise<void>
 }
 
 type ProfileDraft = {
@@ -45,7 +47,9 @@ const quickModels = {
 }
 
 export function InitialSetupScreen({
+  error,
   initialProfiles,
+  isRunning = false,
   providerSettings,
   onComplete,
 }: InitialSetupScreenProps) {
@@ -61,7 +65,11 @@ export function InitialSetupScreen({
   const selectedProvider = settings.modelProviders.find(
     (provider) => provider.enabled && provider.selectedModelId,
   )
-  const canStart = repositoryPath.trim().length > 0 && Boolean(selectedProvider) && activeProfiles.length > 0
+  const canStart =
+    repositoryPath.trim().length > 0 &&
+    Boolean(selectedProvider) &&
+    activeProfiles.length > 0 &&
+    !isRunning
 
   const setupItems = useMemo(
     () => [
@@ -339,6 +347,9 @@ export function InitialSetupScreen({
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-border p-6">
+          {error ? (
+            <p className="mr-auto max-w-xl text-sm text-destructive">{error}</p>
+          ) : null}
           <Button
             disabled={!canStart}
             onClick={() =>
@@ -349,7 +360,7 @@ export function InitialSetupScreen({
               })
             }
           >
-            Start review workspace
+            {isRunning ? "Running review..." : "Start review workspace"}
           </Button>
         </div>
       </section>

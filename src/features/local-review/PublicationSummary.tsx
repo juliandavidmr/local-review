@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button"
-import type { ReviewSessionMock } from "@/data/localReviewMockData"
+import type { ReviewWorkspaceView } from "@/domain/workspace-view"
 
 type PublicationSummaryProps = {
-  publication: ReviewSessionMock["publication"]
+  publication: ReviewWorkspaceView["publication"]
 }
 
 export function PublicationSummary({ publication }: PublicationSummaryProps) {

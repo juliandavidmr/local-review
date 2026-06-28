@@ -23,3 +23,10 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rig = "0.39.0"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.13.4", features = ["json", "rustls"] }
+dirs = "6.0.0"
+thiserror = "2.0.18"
+uuid = "1.23.4"
+chrono = "0.4.45"
