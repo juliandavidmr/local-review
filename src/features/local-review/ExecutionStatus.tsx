@@ -16,6 +16,8 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
     execution.modifiedLines === 0
   const hasNoPasses =
     execution.status === "completed" && execution.totalPasses === 0
+  const isRunning = execution.status === "running"
+  const isCancelled = execution.status === "cancelled"
 
   return (
     <section className="border border-border bg-card p-4">
@@ -38,7 +40,22 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
 
       <Progress className="mt-4" value={completedPercent} />
 
-      {hasNoChangedFiles ? (
+      {isRunning ? (
+        <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
+          <p className="font-medium">Review is running.</p>
+          <p className="mt-1 text-muted-foreground">
+            The workspace is open while model passes run. Generated feedback will
+            appear here when the review command completes.
+          </p>
+        </div>
+      ) : isCancelled ? (
+        <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
+          <p className="font-medium">Review was stopped.</p>
+          <p className="mt-1 text-muted-foreground">
+            No more review passes will be started for this session.
+          </p>
+        </div>
+      ) : hasNoChangedFiles ? (
         <div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
           <p className="font-medium">No changes were available to review.</p>
           <p className="mt-1 text-muted-foreground">

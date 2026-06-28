@@ -109,7 +109,12 @@ export async function checkProviderConnection(
   return invoke("check_provider_connection", { provider })
 }
 
+export async function cancelReviewSession(reviewId: string): Promise<void> {
+  return invoke("cancel_review_session", { reviewId })
+}
+
 export async function runReviewSession(input: {
+  reviewId: string
   repository: RepositoryDescriptor
   changeSet: ChangeSetSnapshot
   profiles: ReviewProfileItem[]

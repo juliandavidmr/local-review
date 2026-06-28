@@ -3,11 +3,18 @@ mod git;
 mod providers;
 mod store;
 
+use std::{
+    collections::HashSet,
+    sync::{Mutex, OnceLock},
+};
+
 use domain::{
     ChangeSetSnapshot, ChangeSource, ExecutionStatus, ModelDescriptor, ModelProviderSettings,
     ProviderConnectionStatus, ProviderSettings, PublicationSummary, RepositoryDescriptor,
     ReviewFeedback, ReviewProfileItem, ReviewWorkspaceSession,
 };
+
+static CANCELLED_REVIEWS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 #[tauri::command]
 fn open_repository(repository_path: String) -> Result<RepositoryDescriptor, String> {
@@ -60,6 +67,7 @@ async fn check_provider_connection(
 
 #[tauri::command]
 async fn run_review_session(
+    review_id: String,
     repository: RepositoryDescriptor,
     change_set: ChangeSetSnapshot,
     profiles: Vec<ReviewProfileItem>,
@@ -85,9 +93,21 @@ async fn run_review_session(
     let mut completed_passes = 0;
     let mut failed_passes = 0;
     let mut pass_index = 0;
+    let total_passes = change_set
+        .files
+        .iter()
+        .filter(|file| !file.is_generated)
+        .count() as u32
+        * active_profiles.len() as u32;
+    let mut cancelled = false;
 
     for file in change_set.files.iter().filter(|file| !file.is_generated) {
         for profile in &active_profiles {
+            if review_cancelled(&review_id) {
+                cancelled = true;
+                break;
+            }
+
             match providers::run_review_pass(&provider, profile, &change_set, file, pass_index)
                 .await
             {
@@ -101,7 +121,13 @@ async fn run_review_session(
             }
             pass_index += 1;
         }
+
+        if cancelled {
+            break;
+        }
     }
+
+    clear_review_cancellation(&review_id);
 
     let inline_comments = feedback
         .iter()
@@ -115,8 +141,9 @@ async fn run_review_session(
         .iter()
         .map(|file| file.additions + file.deletions)
         .sum::<u32>();
-    let total_passes = pass_index as u32;
-    let status = if failed_passes > 0 || (change_set.files.len() > 0 && total_passes == 0) {
+    let status = if cancelled {
+        "cancelled"
+    } else if failed_passes > 0 || (change_set.files.len() > 0 && total_passes == 0) {
         "incomplete"
     } else {
         "completed"
@@ -149,6 +176,32 @@ async fn run_review_session(
     })
 }
 
+#[tauri::command]
+fn cancel_review_session(review_id: String) -> Result<(), String> {
+    cancelled_reviews()
+        .lock()
+        .map_err(|_| "Could not lock cancellation registry.".to_string())?
+        .insert(review_id);
+    Ok(())
+}
+
+fn review_cancelled(review_id: &str) -> bool {
+    cancelled_reviews()
+        .lock()
+        .map(|reviews| reviews.contains(review_id))
+        .unwrap_or(false)
+}
+
+fn clear_review_cancellation(review_id: &str) {
+    if let Ok(mut reviews) = cancelled_reviews().lock() {
+        reviews.remove(review_id);
+    }
+}
+
+fn cancelled_reviews() -> &'static Mutex<HashSet<String>> {
+    CANCELLED_REVIEWS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
 fn change_source_label(source: &ChangeSource) -> &'static str {
     match source {
         ChangeSource::WorkingTree { .. } => "Working tree",
@@ -175,6 +228,7 @@ pub fn run() {
             save_provider_settings,
             list_provider_models,
             check_provider_connection,
+            cancel_review_session,
             run_review_session
         ])
         .run(tauri::generate_context!())

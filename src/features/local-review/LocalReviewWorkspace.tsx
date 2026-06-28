@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react"
-import { ArrowCounterClockwise } from "@phosphor-icons/react"
+import { useEffect, useRef, useState } from "react"
+import { ArrowCounterClockwise, StopCircle } from "@phosphor-icons/react"
 import {
   buildChangeSet,
+  cancelReviewSession,
+  type ChangeSetSnapshot,
   loadProfiles,
   loadProviderSettings,
   openRepository,
   runReviewSession,
   saveProviderSettings,
   saveProfile,
+  type RepositoryDescriptor,
   type ReviewWorkspaceSession,
 } from "@/adapters/tauri-local-review-api"
 import { WorkspaceShell } from "@/components/layout/WorkspaceShell"
@@ -32,6 +35,7 @@ export function LocalReviewWorkspace() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const activeReviewId = useRef<string | null>(null)
 
   useEffect(() => {
     async function loadInitialState() {
@@ -86,6 +90,7 @@ export function LocalReviewWorkspace() {
         onComplete={async (setup) => {
           setRunning(true)
           setError(null)
+          let startedReviewId: string | null = null
           try {
             const repository = await openRepository(setup.repositoryPath)
             const changeSet = await buildChangeSet(
@@ -112,19 +117,37 @@ export function LocalReviewWorkspace() {
               await saveProfile(profile)
             }
 
+            const reviewId = createReviewId()
+            startedReviewId = reviewId
+            activeReviewId.current = reviewId
+            setProfiles(profilesWithRepositoryScope)
+            setProviderSettings(savedSettings)
+            setSession(
+              createRunningSession({
+                changeSet,
+                profiles: profilesWithRepositoryScope,
+                providerSettings: savedSettings,
+                repository,
+              }),
+            )
+
             const nextSession = await runReviewSession({
+              reviewId,
               repository,
               changeSet,
               profiles: profilesWithRepositoryScope,
               providerSettings: savedSettings,
             })
 
-            setProfiles(profilesWithRepositoryScope)
-            setProviderSettings(savedSettings)
-            setSession(nextSession)
+            if (activeReviewId.current === reviewId) {
+              setSession(nextSession)
+            }
           } catch (unknownError) {
             setError(errorMessage(unknownError))
           } finally {
+            if (startedReviewId && activeReviewId.current === startedReviewId) {
+              activeReviewId.current = null
+            }
             setRunning(false)
           }
         }}
@@ -136,10 +159,18 @@ export function LocalReviewWorkspace() {
   return (
     <WorkspaceShell
       actions={
-        <Button onClick={() => setSession(null)} variant="outline">
-          <ArrowCounterClockwise className="size-4" />
-          New review
-        </Button>
+        <>
+          {running ? (
+            <Button onClick={stopActiveReview} variant="destructive">
+              <StopCircle className="size-4" />
+              Stop review
+            </Button>
+          ) : null}
+          <Button disabled={running} onClick={() => setSession(null)} variant="outline">
+            <ArrowCounterClockwise className="size-4" />
+            New review
+          </Button>
+        </>
       }
       subtitle="Open a repository, review a change set, curate generated feedback, and publish through gh."
       title="Review Workspace"
@@ -185,8 +216,95 @@ export function LocalReviewWorkspace() {
       </div>
     </WorkspaceShell>
   )
+
+  async function stopActiveReview() {
+    const reviewId = activeReviewId.current
+    if (!reviewId) return
+
+    const confirmed = window.confirm(
+      "Stop the current review? The current model pass may finish in the background, but no more passes will be started.",
+    )
+    if (!confirmed) return
+
+    activeReviewId.current = null
+    setRunning(false)
+    try {
+      await cancelReviewSession(reviewId)
+    } catch (unknownError) {
+      setError(errorMessage(unknownError))
+    }
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            execution: {
+              ...current.execution,
+              status: "cancelled",
+            },
+            publication: {
+              ...current.publication,
+              incompleteSession: true,
+            },
+          }
+        : current,
+    )
+  }
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function createReviewId(): string {
+  return `review-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function createRunningSession(input: {
+  repository: RepositoryDescriptor
+  changeSet: ChangeSetSnapshot
+  profiles: ReviewProfileItem[]
+  providerSettings: ProviderSettings
+}): ReviewWorkspaceSession {
+  const activeProfiles = input.profiles.filter((profile) => profile.selected)
+  const reviewableFiles = input.changeSet.files.filter((file) => !file.isGenerated)
+  const modifiedLines = input.changeSet.files.reduce(
+    (total, file) => total + file.additions + file.deletions,
+    0,
+  )
+
+  return {
+    repository: {
+      name: input.repository.name,
+      path: input.repository.path,
+      branch: input.repository.currentBranch ?? "detached",
+      headSha: input.repository.headSha,
+    },
+    changeSource: {
+      kind: "Preparing review",
+      target: "Selected change source",
+      intent: "Running model review passes",
+      snapshot: `${input.changeSet.files.length} files, ${modifiedLines} modified lines`,
+    },
+    changeSet: input.changeSet,
+    profiles: activeProfiles,
+    providerSettings: input.providerSettings,
+    execution: {
+      status: "running",
+      completedPasses: 0,
+      totalPasses: reviewableFiles.length * activeProfiles.length,
+      changedFiles: input.changeSet.files.length,
+      modifiedLines,
+      explorationRequests: 0,
+      guardrailHits: 0,
+    },
+    feedback: [],
+    publication: {
+      target: "gh pull request publication not selected",
+      totalComments: 0,
+      inlineComments: 0,
+      summaryComments: 0,
+      limitedContextCount: 0,
+      incompleteSession: false,
+    },
+  }
 }
