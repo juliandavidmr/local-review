@@ -433,230 +433,84 @@ function ProviderSetupCard({
   onModelSelect,
   onRefresh,
 }: ProviderSetupCardProps) {
-                  const fetchedModels = modelsByProvider[provider.id] ?? []
-                  const presetModels =
-                    quickModels[provider.id as keyof typeof quickModels] ?? []
-                  const modelOptions = [
-                    ...fetchedModels.map((model) => ({
-                      label: model.displayName,
-                      value: model.modelId,
-                    })),
-                    ...presetModels
-                      .filter(
-                        (modelId) =>
-                          !fetchedModels.some(
-                            (model) => model.modelId === modelId,
-                          ),
-                      )
-                      .map((modelId) => ({ label: modelId, value: modelId })),
-                  ]
-                  const status = statuses[provider.id]
-                  const isLoading = loadingProviderId === provider.id
-                  const isLmStudio = provider.kind === "lm_studio"
+  const presetModels = quickModels[provider.id as keyof typeof quickModels] ?? []
+  const modelOptions = [
+    ...models.map((model) => ({
+      label: model.displayName,
+      value: model.modelId,
+    })),
+    ...presetModels
+      .filter(
+        (modelId) => !models.some((model) => model.modelId === modelId),
+      )
+      .map((modelId) => ({ label: modelId, value: modelId })),
+  ]
+  const isLmStudio = provider.kind === "lm_studio"
 
-                  return (
-                    <div className="border border-border p-3" key={provider.id}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{provider.name}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {isLmStudio
-                              ? "LM Studio local OpenAI-compatible server"
-                              : "Pre-filled local endpoint"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={provider.enabled}
-                          onCheckedChange={(enabled) =>
-                            setSettings((current) =>
-                              enabled
-                                ? selectSingleModelProvider(current, provider.id)
-                                : updateModelProviderSettings(
-                                    current,
-                                    provider.id,
-                                    (currentProvider) => ({
-                                      ...currentProvider,
-                                      enabled: false,
-                                      selectedModelId: undefined,
-                                      useForHumanToneRewrite: false,
-                                    }),
-                                  ),
-                            )
-                          }
-                        />
-                      </div>
-                      <div className="mt-3 space-y-2">
-                        <Label htmlFor={`${provider.id}-setup-url`}>
-                          Base URL
-                        </Label>
-                        <Input
-                          id={`${provider.id}-setup-url`}
-                          onChange={(event) =>
-                            updateProviderBaseUrl(
-                              provider.id,
-                              event.target.value,
-                            )
-                          }
-                          value={provider.baseUrl}
-                        />
-                      </div>
-                      <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
-                        <div className="w-full space-y-2">
-                          <Label>Model</Label>
-                          <Select
-                            onValueChange={(modelId) =>
-                              selectProvider(provider.id, modelId)
-                            }
-                            value={provider.selectedModelId ?? ""}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select model" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {modelOptions.map((model) => (
-                                <SelectItem key={model.value} value={model.value}>
-                                  {model.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex items-end">
-                          <Button
-                            className="w-full md:w-auto"
-                            disabled={isLoading}
-                            onClick={() => refreshProvider(provider)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <ArrowsClockwise className="size-4" />
-                            {isLoading
-                              ? "Checking..."
-                              : isLmStudio
-                                ? "Test LM Studio"
-                                : "Load models"}
-                          </Button>
-                        </div>
-                      </div>
-                      {status ? (
-                        <p
-                          className={
-                            status.ok
-                              ? "mt-3 text-xs text-muted-foreground"
-                              : "mt-3 text-xs text-destructive"
-                          }
-                        >
-                          {status.ok ? "Connected" : "Unavailable"}:{" "}
-                          {status.message}
-                        </p>
-                      ) : null}
-                    </div>
-                  )
-                })}
-              </div>
-            </SetupBlock>
-
-            <SetupBlock title="Review profiles">
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-3">
-                  {profiles.map((profile) => (
-                    <label
-                      className="flex items-start justify-between gap-3 border border-border p-3"
-                      key={profile.id}
-                    >
-                      <span>
-                        <span className="block text-sm font-medium">
-                          {profile.name}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {profile.scope}
-                        </span>
-                      </span>
-                      <Switch
-                        checked={profile.selected}
-                        onCheckedChange={(selected) =>
-                          setProfiles((current) =>
-                            current.map((candidate) =>
-                              candidate.id === profile.id
-                                ? { ...candidate, selected }
-                                : candidate,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-                <div className="space-y-3 border border-border p-3">
-                  <p className="text-sm font-medium">Create manual profile</p>
-                  <Input
-                    onChange={(event) =>
-                      setProfileDraft((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Security"
-                    value={profileDraft.name}
-                  />
-                  <Select
-                    onValueChange={(scopeKind) =>
-                      setProfileDraft((current) => ({
-                        ...current,
-                        scopeKind: scopeKind as ReviewProfileScopeKind,
-                      }))
-                    }
-                    value={profileDraft.scopeKind}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="global">Global</SelectItem>
-                      <SelectItem value="repository">Repository path</SelectItem>
-                      <SelectItem value="folder">Folder path</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Textarea
-                    className="min-h-24"
-                    onChange={(event) =>
-                      setProfileDraft((current) => ({
-                        ...current,
-                        prompt: event.target.value,
-                      }))
-                    }
-                    placeholder="Review for..."
-                    value={profileDraft.prompt}
-                  />
-                  <Button className="w-full" onClick={createProfile} variant="outline">
-                    <Plus className="size-4" />
-                    Add profile
-                  </Button>
-                </div>
-              </div>
-            </SetupBlock>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-border p-6">
-          {error ? (
-            <p className="mr-auto max-w-xl text-sm text-destructive">{error}</p>
-          ) : null}
-          <Button
-            disabled={!canStart}
-            onClick={() =>
-              onComplete({
-                repositoryPath: repositoryPath.trim(),
-                profiles,
-                providerSettings: settings,
-              })
-            }
+  return (
+    <div className="border border-border p-3">
+      <div>
+        <p className="font-medium">{provider.name}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {isLmStudio
+            ? "LM Studio local OpenAI-compatible server"
+            : "Ollama local API endpoint"}
+        </p>
+      </div>
+      <div className="mt-3 space-y-2">
+        <Label htmlFor={`${provider.id}-setup-url`}>Base URL</Label>
+        <Input
+          id={`${provider.id}-setup-url`}
+          onChange={(event) =>
+            onBaseUrlChange(provider.id, event.target.value)
+          }
+          value={provider.baseUrl}
+        />
+      </div>
+      <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
+        <div className="w-full space-y-2">
+          <Label>Model</Label>
+          <Select
+            onValueChange={(modelId) => onModelSelect(provider.id, modelId)}
+            value={provider.selectedModelId ?? ""}
           >
-            {isRunning ? "Running review..." : "Start review workspace"}
+            <SelectTrigger>
+              <SelectValue placeholder="Select model" />
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((model) => (
+                <SelectItem key={model.value} value={model.value}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-end">
+          <Button
+            className="w-full md:w-auto"
+            disabled={isLoading}
+            onClick={() => onRefresh(provider)}
+            size="sm"
+            variant="outline"
+          >
+            <ArrowsClockwise className="size-4" />
+            {isLoading ? "Checking..." : isLmStudio ? "Test LM Studio" : "Load models"}
           </Button>
         </div>
-      </section>
-    </main>
+      </div>
+      {status ? (
+        <p
+          className={
+            status.ok
+              ? "mt-3 text-xs text-muted-foreground"
+              : "mt-3 text-xs text-destructive"
+          }
+        >
+          {status.ok ? "Connected" : "Unavailable"}: {status.message}
+        </p>
+      ) : null}
+    </div>
   )
 }
 

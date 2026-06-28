@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { ArrowCounterClockwise } from "@phosphor-icons/react"
 import {
-  buildWorkingTreeChangeSet,
+  buildChangeSet,
   loadProfiles,
   loadProviderSettings,
   openRepository,
@@ -88,7 +88,10 @@ export function LocalReviewWorkspace() {
           setError(null)
           try {
             const repository = await openRepository(setup.repositoryPath)
-            const changeSet = await buildWorkingTreeChangeSet(repository.path)
+            const changeSet = await buildChangeSet(
+              repository.path,
+              setup.reviewSourceKind,
+            )
             const savedSettings = await saveProviderSettings(
               setup.providerSettings,
             )
