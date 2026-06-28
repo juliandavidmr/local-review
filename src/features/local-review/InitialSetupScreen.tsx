@@ -86,7 +86,7 @@ export function InitialSetupScreen({
     selectSingleModelProvider(providerSettings, "lm-studio"),
   )
   const [reviewSourceKind, setReviewSourceKind] =
-    useState<ReviewChangeSourceKind>("unstaged_changes")
+    useState<ReviewChangeSourceKind>("current_branch")
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>({
     name: "",
     prompt: "",

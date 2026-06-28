@@ -92,6 +92,13 @@ export function LocalReviewWorkspace() {
               repository.path,
               setup.reviewSourceKind,
             )
+
+            if (changeSet.files.length === 0) {
+              throw new Error(
+                "The selected review source produced 0 changed files. Choose Current branch for committed branch changes, Staged changes for git add changes, or Unstaged changes for local working tree edits.",
+              )
+            }
+
             const savedSettings = await saveProviderSettings(
               setup.providerSettings,
             )

@@ -117,18 +117,25 @@ fn diff_args(repository_path: &str, source: &ChangeSource) -> Result<Vec<String>
 }
 
 fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
+    for candidate in ["origin/main", "origin/master", "main", "master"] {
+        if run_git(repository_path, &["rev-parse", "--verify", candidate]).is_ok() {
+            return Ok(candidate.to_string());
+        }
+    }
+
+    let current_branch = run_git(repository_path, &["branch", "--show-current"]).ok();
     if let Ok(upstream) = run_git(
         repository_path,
         &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
     ) {
-        if !upstream.trim().is_empty() {
-            return Ok(upstream.trim().to_string());
-        }
-    }
+        let upstream = upstream.trim();
+        let tracks_same_branch = current_branch
+            .as_deref()
+            .map(|branch| upstream.ends_with(&format!("/{branch}")) || upstream == branch)
+            .unwrap_or(false);
 
-    for candidate in ["origin/main", "origin/master", "main", "master"] {
-        if run_git(repository_path, &["rev-parse", "--verify", candidate]).is_ok() {
-            return Ok(candidate.to_string());
+        if !upstream.is_empty() && !tracks_same_branch {
+            return Ok(upstream.trim().to_string());
         }
     }
 

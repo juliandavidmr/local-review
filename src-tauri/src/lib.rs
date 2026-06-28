@@ -115,6 +115,12 @@ async fn run_review_session(
         .iter()
         .map(|file| file.additions + file.deletions)
         .sum::<u32>();
+    let total_passes = pass_index as u32;
+    let status = if failed_passes > 0 || (change_set.files.len() > 0 && total_passes == 0) {
+        "incomplete"
+    } else {
+        "completed"
+    };
 
     Ok(ReviewWorkspaceSession {
         repository,
@@ -123,13 +129,9 @@ async fn run_review_session(
         profiles: active_profiles,
         provider_settings,
         execution: ExecutionStatus {
-            status: if failed_passes > 0 {
-                "incomplete".to_string()
-            } else {
-                "completed".to_string()
-            },
+            status: status.to_string(),
             completed_passes,
-            total_passes: pass_index as u32,
+            total_passes,
             changed_files: change_set.files.len() as u32,
             modified_lines,
             exploration_requests: 0,
@@ -142,7 +144,7 @@ async fn run_review_session(
             inline_comments,
             summary_comments,
             limited_context_count,
-            incomplete_session: failed_passes > 0,
+            incomplete_session: status == "incomplete",
         },
     })
 }
