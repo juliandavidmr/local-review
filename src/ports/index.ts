@@ -9,6 +9,9 @@ import type {
   ReviewPassOutput,
   ReviewProfile,
   ReviewSession,
+  ProviderConnectionStatus,
+  ProviderSettings,
+  ModelProviderSettings,
   SuggestedProfile,
 } from "../domain"
 import type { ReviewBudget, ReviewPlan, PlannedReviewPass } from "../domain/review-plan"
@@ -59,6 +62,11 @@ export interface ModelProvider {
   readonly rewriteForHumanTone: (input: HumanToneRewriteInput) => Promise<readonly ReviewFeedback[]>
 }
 
+export interface ConfigurableModelProvider extends ModelProvider {
+  readonly settings: ModelProviderSettings
+  readonly checkConnection: () => Promise<ProviderConnectionStatus>
+}
+
 export interface ModelDescriptor {
   readonly providerId: string
   readonly modelId: string
@@ -90,6 +98,11 @@ export interface HumanToneRewriteInput {
 export interface McpProvider {
   readonly listEnabledSources: () => Promise<readonly DecisionSupportSource[]>
   readonly requestContext: (input: McpContextRequest) => Promise<McpContextResult>
+}
+
+export interface ProviderSettingsStore {
+  readonly loadSettings: () => Promise<ProviderSettings>
+  readonly saveSettings: (settings: ProviderSettings) => Promise<void>
 }
 
 export interface DecisionSupportSource {

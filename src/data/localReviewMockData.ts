@@ -1,3 +1,5 @@
+import { defaultProviderSettings, type ProviderSettings } from "@/domain"
+
 export type ReviewFeedbackState =
   | "draft"
   | "accepted"
@@ -61,6 +63,7 @@ export type ReviewSessionMock = {
     snapshot: string
   }
   profiles: ReviewProfileItem[]
+  providerSettings: ProviderSettings
   execution: {
     status: "running" | "completed" | "incomplete"
     completedPasses: number
@@ -131,6 +134,7 @@ export const localReviewMockSession: ReviewSessionMock = {
         "Review frontend surfaces for keyboard access, visible state, readable hierarchy, and control affordances.",
     },
   ],
+  providerSettings: defaultProviderSettings,
   execution: {
     status: "running",
     completedPasses: 17,
