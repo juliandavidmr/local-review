@@ -14,7 +14,7 @@ export function WorkspaceShell({
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-screen-2xl items-center justify-between px-6 py-4">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">
               Local Review
@@ -28,7 +28,7 @@ export function WorkspaceShell({
           </div>
         </div>
       </div>
-      <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>
+      <div className="mx-auto max-w-screen-2xl px-6 py-6">{children}</div>
     </main>
   )
 }
