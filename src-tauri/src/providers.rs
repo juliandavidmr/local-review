@@ -152,7 +152,21 @@ pub async fn run_review_pass(
     let base_url = openai_base_url(provider);
     let prompt = review_prompt(profile, change_set, file);
     let raw = run_rig_agent(&base_url, &model, &prompt).await?;
-    let parsed = parse_json_from_model(&raw)?;
+    let parsed = match parse_json_from_model(&raw) {
+        Ok(parsed) => parsed,
+        Err(parse_error) => {
+            eprintln!(
+                "[local-review-pass] json_repair_start file={} profile={} error={}",
+                file.path, profile.name, parse_error
+            );
+            let repaired = repair_model_json(&base_url, &model, &raw).await?;
+            parse_json_from_model(&repaired).map_err(|repair_error| {
+                format!(
+                    "{parse_error}; repair also failed: {repair_error}; repaired raw: {repaired}"
+                )
+            })?
+        }
+    };
     let pass_id = format!("pass-{}-{}", profile.id, pass_index + 1);
     let created_at = now_iso();
 
@@ -196,6 +210,15 @@ async fn run_rig_agent(base_url: &str, model: &str, prompt: &str) -> Result<Stri
         .await
         .map_err(|error| error.to_string())?;
     Ok(response.to_string())
+}
+
+async fn repair_model_json(base_url: &str, model: &str, raw: &str) -> Result<String, String> {
+    let prompt = format!(
+        "Repair this malformed JSON response from a code review model.\n\nRules:\n- Return only valid JSON.\n- Preserve all feedback content.\n- The root must be an object with a feedback array.\n- Each feedback item should use keys title, severity, line, body, suggestedAction, evidence, limitations.\n- Do not add markdown fences.\n\nMalformed response:\n{}",
+        raw
+    );
+
+    run_rig_agent(base_url, model, &prompt).await
 }
 
 fn openai_base_url(provider: &ModelProviderSettings) -> String {
@@ -259,7 +282,17 @@ fn parse_json_from_model(raw: &str) -> Result<AgentFeedbackOutput, String> {
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
+
     serde_json::from_str(trimmed)
+        .or_else(|_| {
+            let start = trimmed
+                .find('{')
+                .ok_or_else(|| serde_json::Error::io(std::io::Error::other("missing JSON object")))?;
+            let end = trimmed
+                .rfind('}')
+                .ok_or_else(|| serde_json::Error::io(std::io::Error::other("missing JSON object")))?;
+            serde_json::from_str(&trimmed[start..=end])
+        })
         .map_err(|error| format!("Invalid model JSON: {error}; raw: {raw}"))
 }
 
