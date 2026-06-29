@@ -4,6 +4,7 @@ import {
   buildChangeSet,
   cancelReviewSession,
   type ChangeSetSnapshot,
+  loadLatestReviewSession,
   loadProfiles,
   loadProviderSettings,
   listenReviewProgress,
@@ -11,6 +12,7 @@ import {
   runReviewSession,
   saveProviderSettings,
   saveProfile,
+  updateReviewFeedback,
   type RepositoryDescriptor,
   type ReviewWorkspaceSession,
 } from "@/adapters/tauri-local-review-api"
@@ -45,12 +47,14 @@ export function LocalReviewWorkspace() {
   useEffect(() => {
     async function loadInitialState() {
       try {
-        const [storedProfiles, storedSettings] = await Promise.all([
+        const [storedProfiles, storedSettings, latestSession] = await Promise.all([
           loadProfiles(),
           loadProviderSettings(),
+          loadLatestReviewSession(),
         ])
         setProfiles(storedProfiles)
         setProviderSettings(storedSettings)
+        setSession(latestSession)
       } catch (unknownError) {
         setError(errorMessage(unknownError))
       } finally {
@@ -227,11 +231,41 @@ export function LocalReviewWorkspace() {
         />
         <SetupOverview session={session} />
         <ExecutionStatus execution={session.execution} />
-        <FeedbackWorkspace feedback={session.feedback} isRunning={running} />
+        <FeedbackWorkspace
+          feedback={session.feedback}
+          isRunning={running}
+          onFeedbackChange={persistFeedbackChange}
+        />
         <PublicationSummary publication={session.publication} />
       </div>
     </WorkspaceShell>
   )
+
+  async function persistFeedbackChange(nextFeedback: ReviewFeedbackItem) {
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            feedback: current.feedback.map((item) =>
+              item.id === nextFeedback.id ? nextFeedback : item,
+            ),
+          }
+        : current,
+    )
+
+    if (!session) return
+
+    try {
+      const savedSession = await updateReviewFeedback({
+        sessionId: session.changeSet.id,
+        feedbackId: nextFeedback.id,
+        feedback: nextFeedback,
+      })
+      setSession(savedSession)
+    } catch (unknownError) {
+      setError(errorMessage(unknownError))
+    }
+  }
 
   async function stopActiveReview() {
     const reviewId = activeReviewId.current

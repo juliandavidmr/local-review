@@ -96,10 +96,7 @@ fn diff_args(repository_path: &str, source: &ChangeSource) -> Result<Vec<String>
             "diff".to_string(),
             format!("{}...HEAD", current_branch_base_ref(repository_path)?),
         ]),
-        ChangeSource::StagedChanges { .. } => Ok(vec![
-            "diff".to_string(),
-            "--cached".to_string(),
-        ]),
+        ChangeSource::StagedChanges { .. } => Ok(vec!["diff".to_string(), "--cached".to_string()]),
         ChangeSource::UnstagedChanges { .. } => Ok(vec!["diff".to_string()]),
         ChangeSource::Commit { commit_sha, .. } => Ok(vec![
             "diff".to_string(),
@@ -126,7 +123,12 @@ fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
     let current_branch = run_git(repository_path, &["branch", "--show-current"]).ok();
     if let Ok(upstream) = run_git(
         repository_path,
-        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
     ) {
         let upstream = upstream.trim();
         let tracks_same_branch = current_branch
@@ -139,10 +141,7 @@ fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
         }
     }
 
-    Err(
-        "Current branch review needs an upstream branch or a main/master base ref."
-            .to_string(),
-    )
+    Err("Current branch review needs an upstream branch or a main/master base ref.".to_string())
 }
 
 fn run_git(repository_path: &str, args: &[&str]) -> Result<String, String> {

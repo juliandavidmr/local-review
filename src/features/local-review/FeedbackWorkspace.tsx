@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -19,6 +20,7 @@ import type {
 type FeedbackWorkspaceProps = {
   feedback: ReviewFeedbackItem[]
   isRunning?: boolean
+  onFeedbackChange?: (feedback: ReviewFeedbackItem) => void
 }
 
 const stateOptions: Array<"all" | ReviewFeedbackState> = [
@@ -42,6 +44,7 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
 export function FeedbackWorkspace({
   feedback,
   isRunning = false,
+  onFeedbackChange,
 }: FeedbackWorkspaceProps) {
   const [stateFilter, setStateFilter] =
     useState<(typeof stateOptions)[number]>("all")
@@ -136,7 +139,12 @@ export function FeedbackWorkspace({
       {filteredFeedback.length > 0 ? (
         <div className="space-y-4 bg-muted/40 p-4">
           {filteredFeedback.map((item, index) => (
-            <FeedbackCard feedback={item} index={index + 1} key={item.id} />
+            <FeedbackCard
+              feedback={item}
+              index={index + 1}
+              key={item.id}
+              onFeedbackChange={onFeedbackChange}
+            />
           ))}
         </div>
       ) : (
@@ -190,9 +198,14 @@ function FilterSelect<T extends string>({
 type FeedbackCardProps = {
   feedback: ReviewFeedbackItem
   index: number
+  onFeedbackChange?: (feedback: ReviewFeedbackItem) => void
 }
 
-function FeedbackCard({ feedback, index }: FeedbackCardProps) {
+function FeedbackCard({
+  feedback,
+  index,
+  onFeedbackChange,
+}: FeedbackCardProps) {
   return (
     <article className="border border-border bg-card shadow-sm">
       <div className="border-b border-border bg-muted/30 p-5">
@@ -230,9 +243,21 @@ function FeedbackCard({ feedback, index }: FeedbackCardProps) {
           </DetailBlock>
 
           <DetailBlock title="Editable comment">
-            <div className="min-h-24 border border-input bg-background p-3 text-sm leading-6">
-              {feedback.editableComment}
-            </div>
+            <Textarea
+              className="min-h-24 text-sm leading-6"
+              defaultValue={feedback.editableComment}
+              disabled={!onFeedbackChange || feedback.state === "published"}
+              onBlur={(event) => {
+                const nextComment = event.currentTarget.value
+                if (nextComment !== feedback.editableComment) {
+                  onFeedbackChange?.({
+                    ...feedback,
+                    editableComment: nextComment,
+                    state: feedback.state === "draft" ? "edited" : feedback.state,
+                  })
+                }
+              }}
+            />
           </DetailBlock>
 
           <DetailBlock title="Suggested action">
@@ -267,11 +292,43 @@ function FeedbackCard({ feedback, index }: FeedbackCardProps) {
         </div>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button size="sm">Accept</Button>
-          <Button size="sm" variant="secondary">
+          <Button
+            disabled={!onFeedbackChange || feedback.state === "published"}
+            onClick={() =>
+              onFeedbackChange?.({
+                ...feedback,
+                state: "accepted",
+              })
+            }
+            size="sm"
+          >
+            Accept
+          </Button>
+          <Button
+            disabled={!onFeedbackChange || feedback.state === "published"}
+            onClick={() =>
+              onFeedbackChange?.({
+                ...feedback,
+                editableComment: feedback.editableComment.trim() || feedback.body,
+                state: "edited",
+              })
+            }
+            size="sm"
+            variant="secondary"
+          >
             Mark edited
           </Button>
-          <Button size="sm" variant="outline">
+          <Button
+            disabled={!onFeedbackChange || feedback.state === "published"}
+            onClick={() =>
+              onFeedbackChange?.({
+                ...feedback,
+                state: "dismissed",
+              })
+            }
+            size="sm"
+            variant="outline"
+          >
             Dismiss
           </Button>
         </div>
