@@ -3,6 +3,8 @@ import { ArrowCounterClockwise, StopCircle } from "@phosphor-icons/react"
 import {
   buildChangeSet,
   cancelReviewSession,
+  checkGhCliStatus,
+  type GhCliStatus,
   type ChangeSetSnapshot,
   loadProfiles,
   loadProviderSettings,
@@ -27,7 +29,6 @@ import { ExecutionStatus } from "./ExecutionStatus"
 import { FeedbackWorkspace } from "./FeedbackWorkspace"
 import { InitialSetupScreen } from "./InitialSetupScreen"
 import { ProfileManager } from "./ProfileManager"
-import { ProviderSettingsPanel } from "./ProviderSettingsPanel"
 import { PublicationSummary } from "./PublicationSummary"
 import { SetupOverview } from "./SetupOverview"
 
@@ -40,6 +41,7 @@ export function LocalReviewWorkspace() {
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ghStatus, setGhStatus] = useState<GhCliStatus | null>(null)
   const activeReviewId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -51,6 +53,15 @@ export function LocalReviewWorkspace() {
         ])
         setProfiles(storedProfiles)
         setProviderSettings(storedSettings)
+        checkGhCliStatus()
+          .then(setGhStatus)
+          .catch(() =>
+            setGhStatus({
+              installed: false,
+              authenticated: false,
+              message: "Could not check gh CLI status.",
+            }),
+          )
       } catch (unknownError) {
         setError(errorMessage(unknownError))
       } finally {
@@ -113,6 +124,15 @@ export function LocalReviewWorkspace() {
             const savedSettings = await saveProviderSettings(
               setup.providerSettings,
             )
+            checkGhCliStatus()
+              .then(setGhStatus)
+              .catch(() =>
+                setGhStatus({
+                  installed: false,
+                  authenticated: false,
+                  message: "Could not check gh CLI status.",
+                }),
+              )
             const profilesWithRepositoryScope = setup.profiles.map((profile) =>
               profile.scopeKind === "repository"
                 ? { ...profile, scope: repository.path }
@@ -192,15 +212,7 @@ export function LocalReviewWorkspace() {
       title="Review Workspace"
     >
       <div className="space-y-5">
-        <ProviderSettingsPanel
-          onChange={(settings) => {
-            setProviderSettings(settings)
-            if (session) {
-              setSession({ ...session, providerSettings: settings })
-            }
-          }}
-          settings={providerSettings}
-        />
+        <SelectedProviderSummary settings={session.providerSettings} />
         <ProfileManager
           onCreateProfile={(profile) =>
             setProfiles((current) => [profile, ...current])
@@ -227,11 +239,34 @@ export function LocalReviewWorkspace() {
         />
         <SetupOverview session={session} />
         <ExecutionStatus execution={session.execution} />
-        <FeedbackWorkspace feedback={session.feedback} isRunning={running} />
+        <FeedbackWorkspace
+          feedback={session.feedback}
+          ghInstalled={ghStatus?.installed ?? false}
+          isRunning={running}
+          onUpdateFeedback={updateFeedback}
+        />
         <PublicationSummary publication={session.publication} />
       </div>
     </WorkspaceShell>
   )
+
+
+  function updateFeedback(
+    feedbackId: string,
+    update: Partial<ReviewFeedbackItem>,
+  ) {
+    setSession((current) => {
+      if (!current) return current
+      const feedback = current.feedback.map((item) =>
+        item.id === feedbackId ? { ...item, ...update } : item,
+      )
+      return {
+        ...current,
+        feedback,
+        publication: summarizePublication(current.publication, feedback),
+      }
+    })
+  }
 
   async function stopActiveReview() {
     const reviewId = activeReviewId.current
@@ -265,6 +300,43 @@ export function LocalReviewWorkspace() {
         : current,
     )
   }
+}
+
+function summarizePublication(
+  publication: ReviewWorkspaceSession["publication"],
+  feedback: ReviewFeedbackItem[],
+): ReviewWorkspaceSession["publication"] {
+  const inlineComments = feedback.filter((item) => item.type === "inline").length
+  return {
+    ...publication,
+    totalComments: feedback.length,
+    inlineComments,
+    summaryComments: feedback.length - inlineComments,
+    limitedContextCount: feedback.filter((item) => item.limitedContext).length,
+  }
+}
+
+function SelectedProviderSummary({ settings }: { settings: ProviderSettings }) {
+  const selectedProvider = settings.modelProviders.find(
+    (provider) => provider.enabled && provider.selectedModelId,
+  )
+
+  return (
+    <section className="border border-border bg-card p-4">
+      <p className="text-xs font-medium uppercase text-muted-foreground">
+        Selected provider/model
+      </p>
+      <h2 className="mt-1 text-lg font-semibold">
+        {selectedProvider
+          ? `${selectedProvider.name} / ${selectedProvider.selectedModelId}`
+          : "No provider selected"}
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        This review uses the provider and model chosen in setup. Start a new
+        review to change them.
+      </p>
+    </section>
+  )
 }
 
 function applyReviewProgress(

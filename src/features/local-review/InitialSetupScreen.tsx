@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowsClockwise, FolderOpen, Plus } from "@phosphor-icons/react"
+import { useEffect, useRef, useState } from "react"
+import { ArrowsClockwise, CheckCircle, FolderOpen, Plus, WarningCircle, XCircle } from "@phosphor-icons/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,7 +19,7 @@ import {
   type ModelProviderSettings,
   type ProviderSettings,
 } from "@/domain"
-import type { ReviewChangeSourceKind } from "@/adapters/tauri-local-review-api"
+import { checkGhCliStatus, type GhCliStatus, type ReviewChangeSourceKind } from "@/adapters/tauri-local-review-api"
 import type {
   ReviewProfileItem,
   ReviewProfileScopeKind,
@@ -94,6 +94,8 @@ export function InitialSetupScreen({
   })
   const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
     useProviderModelProbe(settings, setSettings)
+  const [ghStatus, setGhStatus] = useState<GhCliStatus | null>(null)
+  const [ghStatusLoading, setGhStatusLoading] = useState(false)
   const autoTestedLmStudio = useRef(false)
   const activeProfiles = profiles.filter((profile) => profile.selected)
   const selectedProvider = settings.modelProviders.find(
@@ -107,35 +109,9 @@ export function InitialSetupScreen({
     activeProfiles.length > 0 &&
     !isRunning
 
-  const setupItems = useMemo(
-    () => [
-      {
-        label: "Repository",
-        done: repositoryPath.trim().length > 0,
-        detail: repositoryPath || "No folder selected",
-      },
-      {
-        label: "Model provider",
-        done: Boolean(selectedProvider),
-        detail: selectedProvider
-          ? `${selectedProvider.name} / ${selectedProvider.selectedModelId}`
-          : "Choose a provider and model",
-      },
-      {
-        label: "Review source",
-        done: true,
-        detail:
-          reviewSourceOptions.find((option) => option.value === reviewSourceKind)
-            ?.label ?? "Unstaged changes",
-      },
-      {
-        label: "Profiles",
-        done: activeProfiles.length > 0,
-        detail: `${activeProfiles.length} active`,
-      },
-    ],
-    [activeProfiles.length, repositoryPath, reviewSourceKind, selectedProvider],
-  )
+  useEffect(() => {
+    void refreshGhStatus()
+  }, [])
 
   useEffect(() => {
     if (autoTestedLmStudio.current) return
@@ -148,6 +124,21 @@ export function InitialSetupScreen({
     autoTestedLmStudio.current = true
     void refreshProvider(lmStudio)
   }, [])
+
+  async function refreshGhStatus() {
+    setGhStatusLoading(true)
+    try {
+      setGhStatus(await checkGhCliStatus())
+    } catch (unknownError) {
+      setGhStatus({
+        installed: false,
+        authenticated: false,
+        message: unknownError instanceof Error ? unknownError.message : String(unknownError),
+      })
+    } finally {
+      setGhStatusLoading(false)
+    }
+  }
 
   async function chooseRepositoryFolder() {
     try {
@@ -222,24 +213,14 @@ export function InitialSetupScreen({
           </p>
         </div>
 
-        <div className="grid gap-6 p-6 xl:grid-cols-3">
-          <div className="space-y-3">
-            {setupItems.map((item) => (
-              <div className="border border-border bg-background p-3" key={item.label}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">{item.label}</p>
-                  <span className={item.done ? "text-xs text-foreground" : "text-xs text-muted-foreground"}>
-                    {item.done ? "Ready" : "Missing"}
-                  </span>
-                </div>
-                <p className="mt-1 break-all text-xs text-muted-foreground">
-                  {item.detail}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div className="grid gap-6 p-6">
+          <div className="space-y-5">
+            <GhCliStatusCard
+              isLoading={ghStatusLoading}
+              onRefresh={refreshGhStatus}
+              status={ghStatus}
+            />
 
-          <div className="space-y-5 xl:col-span-2">
             <SetupBlock title="Repository">
               <div className="grid gap-2 md:grid-cols-3">
                 <Input
@@ -510,6 +491,45 @@ function ProviderSetupCard({
           {status.ok ? "Connected" : "Unavailable"}: {status.message}
         </p>
       ) : null}
+    </div>
+  )
+}
+
+type GhCliStatusCardProps = {
+  status: GhCliStatus | null
+  isLoading: boolean
+  onRefresh: () => void
+}
+
+function GhCliStatusCard({ status, isLoading, onRefresh }: GhCliStatusCardProps) {
+  const Icon = status?.installed
+    ? status.authenticated
+      ? CheckCircle
+      : WarningCircle
+    : XCircle
+  const label = !status
+    ? "Checking gh CLI"
+    : status.installed
+      ? status.authenticated
+        ? "gh CLI authenticated"
+        : "gh CLI needs authentication"
+      : "gh CLI not detected"
+
+  return (
+    <div className="flex flex-col gap-3 border border-border bg-background p-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex items-start gap-3">
+        <Icon className={status?.installed && status.authenticated ? "mt-0.5 size-5 text-foreground" : "mt-0.5 size-5 text-muted-foreground"} />
+        <div>
+          <p className="text-sm font-medium">{label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {status?.message ?? "Checking whether GitHub CLI is installed and authenticated for publication."}
+          </p>
+        </div>
+      </div>
+      <Button disabled={isLoading} onClick={onRefresh} size="sm" variant="outline">
+        <ArrowsClockwise className="size-4" />
+        {isLoading ? "Checking..." : "Refresh gh status"}
+      </Button>
     </div>
   )
 }

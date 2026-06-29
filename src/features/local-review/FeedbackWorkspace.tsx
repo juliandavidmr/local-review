@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -19,6 +20,8 @@ import type {
 type FeedbackWorkspaceProps = {
   feedback: ReviewFeedbackItem[]
   isRunning?: boolean
+  ghInstalled?: boolean
+  onUpdateFeedback?: (feedbackId: string, update: Partial<ReviewFeedbackItem>) => void
 }
 
 const stateOptions: Array<"all" | ReviewFeedbackState> = [
@@ -42,6 +45,8 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
 export function FeedbackWorkspace({
   feedback,
   isRunning = false,
+  ghInstalled = false,
+  onUpdateFeedback,
 }: FeedbackWorkspaceProps) {
   const [stateFilter, setStateFilter] =
     useState<(typeof stateOptions)[number]>("all")
@@ -136,7 +141,13 @@ export function FeedbackWorkspace({
       {filteredFeedback.length > 0 ? (
         <div className="space-y-4 bg-muted/40 p-4">
           {filteredFeedback.map((item, index) => (
-            <FeedbackCard feedback={item} index={index + 1} key={item.id} />
+            <FeedbackCard
+              feedback={item}
+              ghInstalled={ghInstalled}
+              index={index + 1}
+              key={item.id}
+              onUpdateFeedback={onUpdateFeedback}
+            />
           ))}
         </div>
       ) : (
@@ -189,10 +200,30 @@ function FilterSelect<T extends string>({
 
 type FeedbackCardProps = {
   feedback: ReviewFeedbackItem
+  ghInstalled: boolean
   index: number
+  onUpdateFeedback?: (feedbackId: string, update: Partial<ReviewFeedbackItem>) => void
 }
 
-function FeedbackCard({ feedback, index }: FeedbackCardProps) {
+function FeedbackCard({
+  feedback,
+  ghInstalled,
+  index,
+  onUpdateFeedback,
+}: FeedbackCardProps) {
+  const [editableComment, setEditableComment] = useState(feedback.editableComment)
+
+  function updateState(state: ReviewFeedbackState) {
+    onUpdateFeedback?.(feedback.id, { state })
+  }
+
+  function markEdited() {
+    onUpdateFeedback?.(feedback.id, {
+      editableComment,
+      state: "edited",
+    })
+  }
+
   return (
     <article className="border border-border bg-card shadow-sm">
       <div className="border-b border-border bg-muted/30 p-5">
@@ -230,9 +261,11 @@ function FeedbackCard({ feedback, index }: FeedbackCardProps) {
           </DetailBlock>
 
           <DetailBlock title="Editable comment">
-            <div className="min-h-24 border border-input bg-background p-3 text-sm leading-6">
-              {feedback.editableComment}
-            </div>
+            <Textarea
+              className="min-h-24"
+              onChange={(event) => setEditableComment(event.target.value)}
+              value={editableComment}
+            />
           </DetailBlock>
 
           <DetailBlock title="Suggested action">
@@ -266,15 +299,33 @@ function FeedbackCard({ feedback, index }: FeedbackCardProps) {
           </DetailBlock>
         </div>
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button size="sm">Accept</Button>
-          <Button size="sm" variant="secondary">
-            Mark edited
-          </Button>
-          <Button size="sm" variant="outline">
-            Dismiss
-          </Button>
-        </div>
+        {ghInstalled ? (
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button
+              disabled={feedback.state === "published"}
+              onClick={() => updateState("accepted")}
+              size="sm"
+            >
+              Accept
+            </Button>
+            <Button
+              disabled={feedback.state === "published"}
+              onClick={markEdited}
+              size="sm"
+              variant="secondary"
+            >
+              Mark edited
+            </Button>
+            <Button
+              disabled={feedback.state === "published"}
+              onClick={() => updateState("dismissed")}
+              size="sm"
+              variant="outline"
+            >
+              Dismiss
+            </Button>
+          </div>
+        ) : null}
       </div>
     </article>
   )

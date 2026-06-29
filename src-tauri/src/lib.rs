@@ -14,6 +14,7 @@ use domain::{
     ReviewFeedback, ReviewProfileItem, ReviewWorkspaceSession,
 };
 use serde::Serialize;
+use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
 static CANCELLED_REVIEWS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
@@ -275,6 +276,58 @@ fn emit_review_progress(
     );
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GhCliStatus {
+    installed: bool,
+    authenticated: bool,
+    message: String,
+}
+
+#[tauri::command]
+fn check_gh_cli_status() -> GhCliStatus {
+    match Command::new("gh").arg("--version").output() {
+        Ok(version_output) if version_output.status.success() => {
+            match Command::new("gh").args(["auth", "status"]).output() {
+                Ok(auth_output) if auth_output.status.success() => GhCliStatus {
+                    installed: true,
+                    authenticated: true,
+                    message: "gh CLI is installed and authenticated.".to_string(),
+                },
+                Ok(auth_output) => {
+                    let stderr = String::from_utf8_lossy(&auth_output.stderr)
+                        .trim()
+                        .to_string();
+                    GhCliStatus {
+                        installed: true,
+                        authenticated: false,
+                        message: if stderr.is_empty() {
+                            "gh CLI is installed but not authenticated.".to_string()
+                        } else {
+                            stderr
+                        },
+                    }
+                }
+                Err(error) => GhCliStatus {
+                    installed: true,
+                    authenticated: false,
+                    message: format!("Could not check gh authentication: {error}"),
+                },
+            }
+        }
+        Ok(_) => GhCliStatus {
+            installed: false,
+            authenticated: false,
+            message: "gh CLI was found but did not run successfully.".to_string(),
+        },
+        Err(_) => GhCliStatus {
+            installed: false,
+            authenticated: false,
+            message: "gh CLI is not installed or is not on PATH.".to_string(),
+        },
+    }
+}
+
 #[tauri::command]
 fn cancel_review_session(review_id: String) -> Result<(), String> {
     cancelled_reviews()
@@ -328,6 +381,7 @@ pub fn run() {
             list_provider_models,
             check_provider_connection,
             cancel_review_session,
+            check_gh_cli_status,
             run_review_session
         ])
         .run(tauri::generate_context!())

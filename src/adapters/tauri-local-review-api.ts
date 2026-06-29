@@ -41,6 +41,12 @@ export type ReviewWorkspaceSession = ReviewWorkspaceView & {
   changeSet: ChangeSetSnapshot
 }
 
+export type GhCliStatus = {
+  installed: boolean
+  authenticated: boolean
+  message: string
+}
+
 export type ReviewProgressEvent = {
   reviewId: string
   execution: ReviewWorkspaceView["execution"]
@@ -119,6 +125,10 @@ export async function checkProviderConnection(
 
 export async function cancelReviewSession(reviewId: string): Promise<void> {
   return invoke("cancel_review_session", { reviewId })
+}
+
+export async function checkGhCliStatus(): Promise<GhCliStatus> {
+  return invoke("check_gh_cli_status")
 }
 
 export async function listenReviewProgress(
