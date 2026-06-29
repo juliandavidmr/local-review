@@ -54,6 +54,30 @@ fn save_provider_settings(settings: ProviderSettings) -> Result<ProviderSettings
 }
 
 #[tauri::command]
+fn load_review_sessions() -> Result<Vec<ReviewWorkspaceSession>, String> {
+    store::load_review_sessions()
+}
+
+#[tauri::command]
+fn load_latest_review_session() -> Result<Option<ReviewWorkspaceSession>, String> {
+    store::load_latest_review_session()
+}
+
+#[tauri::command]
+fn save_review_session(session: ReviewWorkspaceSession) -> Result<ReviewWorkspaceSession, String> {
+    store::save_review_session(session)
+}
+
+#[tauri::command]
+fn update_review_feedback(
+    session_id: String,
+    feedback_id: String,
+    feedback: ReviewFeedback,
+) -> Result<ReviewWorkspaceSession, String> {
+    store::update_review_feedback(&session_id, &feedback_id, feedback)
+}
+
+#[tauri::command]
 async fn list_provider_models(
     provider: ModelProviderSettings,
 ) -> Result<Vec<ModelDescriptor>, String> {
@@ -213,7 +237,7 @@ async fn run_review_session(
         "completed"
     };
 
-    Ok(ReviewWorkspaceSession {
+    let session = ReviewWorkspaceSession {
         repository,
         change_source: change_source_label(&change_set.source).to_string(),
         change_set: change_set.clone(),
@@ -237,7 +261,9 @@ async fn run_review_session(
             limited_context_count,
             incomplete_session: status == "incomplete",
         },
-    })
+    };
+
+    store::save_review_session(session)
 }
 
 #[derive(Clone, Serialize)]
@@ -325,6 +351,10 @@ pub fn run() {
             delete_profile,
             load_provider_settings,
             save_provider_settings,
+            load_review_sessions,
+            load_latest_review_session,
+            save_review_session,
+            update_review_feedback,
             list_provider_models,
             check_provider_connection,
             cancel_review_session,

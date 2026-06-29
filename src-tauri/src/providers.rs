@@ -285,12 +285,12 @@ fn parse_json_from_model(raw: &str) -> Result<AgentFeedbackOutput, String> {
 
     serde_json::from_str(trimmed)
         .or_else(|_| {
-            let start = trimmed
-                .find('{')
-                .ok_or_else(|| serde_json::Error::io(std::io::Error::other("missing JSON object")))?;
-            let end = trimmed
-                .rfind('}')
-                .ok_or_else(|| serde_json::Error::io(std::io::Error::other("missing JSON object")))?;
+            let start = trimmed.find('{').ok_or_else(|| {
+                serde_json::Error::io(std::io::Error::other("missing JSON object"))
+            })?;
+            let end = trimmed.rfind('}').ok_or_else(|| {
+                serde_json::Error::io(std::io::Error::other("missing JSON object"))
+            })?;
             serde_json::from_str(&trimmed[start..=end])
         })
         .map_err(|error| format!("Invalid model JSON: {error}; raw: {raw}"))
@@ -314,8 +314,9 @@ fn feedback_from_agent_item(
     } else {
         item.title
     };
-    let suggested_action = first_non_empty(&[item.suggested_action])
-        .unwrap_or_else(|| "Review this finding and decide whether to adjust the changed code.".to_string());
+    let suggested_action = first_non_empty(&[item.suggested_action]).unwrap_or_else(|| {
+        "Review this finding and decide whether to adjust the changed code.".to_string()
+    });
     let location = item
         .line
         .filter(|line| line_exists_in_file(file, *line))

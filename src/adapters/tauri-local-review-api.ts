@@ -99,6 +99,36 @@ export async function loadProviderSettings(): Promise<ProviderSettings> {
   return invoke("load_provider_settings")
 }
 
+export async function loadReviewSessions(): Promise<ReviewWorkspaceSession[]> {
+  const sessions = await invoke<RawReviewWorkspaceSession[]>("load_review_sessions")
+  return sessions.map(toReviewWorkspaceSession)
+}
+
+export async function loadLatestReviewSession(): Promise<ReviewWorkspaceSession | null> {
+  const session = await invoke<RawReviewWorkspaceSession | null>(
+    "load_latest_review_session",
+  )
+  return session ? toReviewWorkspaceSession(session) : null
+}
+
+export async function saveReviewSession(
+  session: ReviewWorkspaceSession,
+): Promise<ReviewWorkspaceSession> {
+  const saved = await invoke<RawReviewWorkspaceSession>("save_review_session", {
+    session,
+  })
+  return toReviewWorkspaceSession(saved)
+}
+
+export async function updateReviewFeedback(input: {
+  sessionId: string
+  feedbackId: string
+  feedback: ReviewFeedbackItem
+}): Promise<ReviewWorkspaceSession> {
+  const saved = await invoke<RawReviewWorkspaceSession>("update_review_feedback", input)
+  return toReviewWorkspaceSession(saved)
+}
+
 export async function saveProviderSettings(
   settings: ProviderSettings,
 ): Promise<ProviderSettings> {
@@ -141,6 +171,12 @@ export async function runReviewSession(input: {
     input,
   )
 
+  return toReviewWorkspaceSession(session)
+}
+
+function toReviewWorkspaceSession(
+  session: RawReviewWorkspaceSession,
+): ReviewWorkspaceSession {
   return {
     ...session,
     repository: {
