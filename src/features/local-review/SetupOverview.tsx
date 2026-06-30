@@ -39,17 +39,9 @@ export function SetupOverview({ session }: SetupOverviewProps) {
 				</h2>
 				<div className="mt-4 space-y-2">
 					{session.profiles.map((profile) => (
-						<div
-							className="flex items-center justify-between border border-border px-3 py-2 text-sm"
-							key={profile.id}
-						>
-							<div>
-								<p className="font-medium">{profile.name}</p>
-								<p className="text-xs text-muted-foreground">{profile.scope}</p>
-							</div>
-							<span className="text-xs text-muted-foreground">
-								{profile.selected ? "Selected" : "Available"}
-							</span>
+						<div key={profile.id}>
+							<p className="font-medium">{profile.name}</p>
+							<p className="text-xs text-muted-foreground">{profile.scope}</p>
 						</div>
 					))}
 				</div>

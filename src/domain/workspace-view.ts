@@ -48,6 +48,12 @@ export type ReviewFeedbackItem = {
   quotedCode?: string
   evidence: string[]
   limitations: string[]
+  codeLocation?: {
+    filePath: string
+    startLine: number
+    endLine: number
+    side: string
+  }
 }
 
 export type ReviewWorkspaceView = {

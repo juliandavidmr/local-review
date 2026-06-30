@@ -79,8 +79,24 @@ fn update_review_feedback(
 }
 
 #[tauri::command]
+fn delete_review_feedback(
+    session_id: String,
+    feedback_id: String,
+) -> Result<ReviewWorkspaceSession, String> {
+    store::delete_review_feedback(&session_id, &feedback_id)
+}
+
+#[tauri::command]
 fn check_gh_cli_status() -> GhCliStatus {
     gh::check_status()
+}
+
+#[tauri::command]
+fn publish_review_feedback(
+    repository_path: String,
+    feedback: ReviewFeedback,
+) -> Result<(), String> {
+    gh::publish_review_feedback(&repository_path, &feedback)
 }
 
 #[tauri::command]
@@ -361,7 +377,9 @@ pub fn run() {
             load_latest_review_session,
             save_review_session,
             update_review_feedback,
+            delete_review_feedback,
             check_gh_cli_status,
+            publish_review_feedback,
             list_provider_models,
             check_provider_connection,
             cancel_review_session,

@@ -104,7 +104,7 @@ export async function saveReviewSession(
   session: ReviewWorkspaceSession,
 ): Promise<ReviewWorkspaceSession> {
   const saved = await invoke<RawReviewWorkspaceSession>("save_review_session", {
-    session,
+    session: toRawReviewWorkspaceSession(session),
   })
   return toReviewWorkspaceSession(saved)
 }
@@ -116,6 +116,21 @@ export async function updateReviewFeedback(input: {
 }): Promise<ReviewWorkspaceSession> {
   const saved = await invoke<RawReviewWorkspaceSession>("update_review_feedback", input)
   return toReviewWorkspaceSession(saved)
+}
+
+export async function deleteReviewFeedback(input: {
+  sessionId: string
+  feedbackId: string
+}): Promise<ReviewWorkspaceSession> {
+  const saved = await invoke<RawReviewWorkspaceSession>("delete_review_feedback", input)
+  return toReviewWorkspaceSession(saved)
+}
+
+export async function publishReviewFeedback(input: {
+  repositoryPath: string
+  feedback: ReviewFeedbackItem
+}): Promise<void> {
+  return invoke("publish_review_feedback", input)
 }
 
 export async function checkGhCliStatus(): Promise<GhCliStatus> {
@@ -184,6 +199,21 @@ function toReviewWorkspaceSession(
       intent: changeSourceIntent(session.changeSource),
       snapshot: `${session.execution.changedFiles} files, ${session.execution.modifiedLines} modified lines`,
     },
+  }
+}
+
+function toRawReviewWorkspaceSession(
+  session: ReviewWorkspaceSession,
+): RawReviewWorkspaceSession {
+  return {
+    ...session,
+    repository: {
+      path: session.repository.path,
+      name: session.repository.name,
+      currentBranch: session.repository.branch,
+      headSha: session.repository.headSha,
+    },
+    changeSource: session.changeSource.kind,
   }
 }
 

@@ -75,7 +75,10 @@ pub fn load_review_sessions() -> Result<Vec<ReviewWorkspaceSession>, String> {
     }
 
     let raw = fs::read_to_string(&path).map_err(|error| error.to_string())?;
-    serde_json::from_str(&raw).map_err(|error| error.to_string())
+    let sessions = serde_json::from_str::<Vec<ReviewWorkspaceSession>>(&raw)
+        .map_err(|error| error.to_string())?;
+
+    Ok(sessions.into_iter().map(finalize_stale_session).collect())
 }
 
 pub fn save_review_session(
@@ -99,6 +102,15 @@ pub fn load_latest_review_session() -> Result<Option<ReviewWorkspaceSession>, St
     Ok(load_review_sessions()?.into_iter().next())
 }
 
+fn finalize_stale_session(mut session: ReviewWorkspaceSession) -> ReviewWorkspaceSession {
+    if session.execution.status == "running" {
+        session.execution.status = "incomplete".to_string();
+        session.publication.incomplete_session = true;
+    }
+
+    session
+}
+
 pub fn update_review_feedback(
     session_id: &str,
     feedback_id: &str,
@@ -116,6 +128,29 @@ pub fn update_review_feedback(
         .find(|item| item.id == feedback_id)
         .ok_or_else(|| "Review feedback was not found in local history.".to_string())?;
     *item = feedback;
+    recalculate_publication_summary(session);
+
+    let updated = session.clone();
+    write_review_sessions(sessions)?;
+    Ok(updated)
+}
+
+pub fn delete_review_feedback(
+    session_id: &str,
+    feedback_id: &str,
+) -> Result<ReviewWorkspaceSession, String> {
+    let mut sessions = load_review_sessions()?;
+    let session = sessions
+        .iter_mut()
+        .find(|session| session.change_set.id == session_id)
+        .ok_or_else(|| "Review session was not found in local history.".to_string())?;
+
+    let initial_count = session.feedback.len();
+    session.feedback.retain(|item| item.id != feedback_id);
+    if session.feedback.len() == initial_count {
+        return Err("Review feedback was not found in local history.".to_string());
+    }
+
     recalculate_publication_summary(session);
 
     let updated = session.clone();
@@ -195,4 +230,62 @@ fn ensure_parent(path: &PathBuf) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "Invalid local-review storage path.".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{
+        ChangeSetSnapshot, ChangeSource, ExecutionStatus, PublicationSummary, RepositoryDescriptor,
+    };
+
+    #[test]
+    fn stale_running_sessions_load_as_incomplete() {
+        let stale = ReviewWorkspaceSession {
+            repository: RepositoryDescriptor {
+                path: "/tmp/repo".to_string(),
+                name: "repo".to_string(),
+                current_branch: Some("main".to_string()),
+                head_sha: Some("abc123".to_string()),
+            },
+            change_source: "Current branch".to_string(),
+            change_set: ChangeSetSnapshot {
+                id: "session-1".to_string(),
+                repository_path: "/tmp/repo".to_string(),
+                source: ChangeSource::CurrentBranch {
+                    repository_path: "/tmp/repo".to_string(),
+                },
+                base_ref: None,
+                head_ref: None,
+                files: Vec::new(),
+                created_at: "2026-06-29T00:00:00Z".to_string(),
+                fingerprint: "fingerprint".to_string(),
+            },
+            profiles: default_profiles(),
+            provider_settings: default_provider_settings(),
+            execution: ExecutionStatus {
+                status: "running".to_string(),
+                completed_passes: 0,
+                total_passes: 1,
+                changed_files: 1,
+                modified_lines: 1,
+                exploration_requests: 0,
+                guardrail_hits: 0,
+            },
+            feedback: Vec::new(),
+            publication: PublicationSummary {
+                target: "gh pull request publication not selected".to_string(),
+                total_comments: 0,
+                inline_comments: 0,
+                summary_comments: 0,
+                limited_context_count: 0,
+                incomplete_session: false,
+            },
+        };
+
+        let loaded = finalize_stale_session(stale);
+
+        assert_eq!(loaded.execution.status, "incomplete");
+        assert!(loaded.publication.incomplete_session);
+    }
 }

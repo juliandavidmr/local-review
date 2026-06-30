@@ -4,6 +4,7 @@ import {
 	buildChangeSet,
 	cancelReviewSession,
 	checkGhCliStatus,
+	deleteReviewFeedback,
 	type ChangeSetSnapshot,
 	type GhCliStatus,
 	loadLatestReviewSession,
@@ -11,6 +12,7 @@ import {
 	loadProviderSettings,
 	listenReviewProgress,
 	openRepository,
+	publishReviewFeedback,
 	runReviewSession,
 	saveReviewSession,
 	saveProviderSettings,
@@ -31,8 +33,6 @@ import type {
 import { ExecutionStatus } from "./ExecutionStatus";
 import { FeedbackWorkspace } from "./FeedbackWorkspace";
 import { InitialSetupScreen } from "./InitialSetupScreen";
-import { ProfileManager } from "./ProfileManager";
-import { PublicationSummary } from "./PublicationSummary";
 import { SetupOverview } from "./SetupOverview";
 
 export function LocalReviewWorkspace() {
@@ -165,7 +165,25 @@ export function LocalReviewWorkspace() {
 							});
 						}
 					} catch (unknownError) {
-						setError(errorMessage(unknownError));
+						const message = errorMessage(unknownError);
+						setError(message);
+						setSession((current) => {
+							if (!current || !startedReviewId) return current;
+
+							const failedSession: ReviewWorkspaceSession = {
+								...current,
+								execution: {
+									...current.execution,
+									status: "incomplete",
+								},
+								publication: {
+									...current.publication,
+									incompleteSession: true,
+								},
+							};
+							void saveReviewSession(failedSession);
+							return failedSession;
+						});
 					} finally {
 						unlistenProgress?.();
 						if (startedReviewId && activeReviewId.current === startedReviewId) {
@@ -209,11 +227,13 @@ export function LocalReviewWorkspace() {
 				<ExecutionStatus execution={session.execution} />
 				<FeedbackWorkspace
 					feedback={session.feedback}
-					ghInstalled={ghStatus?.installed ?? false}
+					ghStatus={ghStatus}
 					isRunning={running}
+					onDeleteFeedback={deleteFeedback}
 					onFeedbackChange={persistFeedbackChange}
+					onPublishFeedback={publishFeedback}
+					repositoryPath={session.repository.path}
 				/>
-				<PublicationSummary publication={session.publication} />
 			</div>
 		</WorkspaceShell>
 	);
@@ -241,6 +261,56 @@ export function LocalReviewWorkspace() {
 			});
 		} catch (unknownError) {
 			setError(errorMessage(unknownError));
+		}
+	}
+
+	async function publishFeedback(feedback: ReviewFeedbackItem) {
+		const currentSession = session;
+		if (!currentSession) return;
+
+		try {
+			await publishReviewFeedback({
+				repositoryPath: currentSession.repository.path,
+				feedback,
+			});
+			await persistFeedbackChange({
+				...feedback,
+				state: "published",
+			});
+		} catch (unknownError) {
+			setError(errorMessage(unknownError));
+		}
+	}
+
+	async function deleteFeedback(feedbackId: string) {
+		const currentSession = session;
+		if (!currentSession) return;
+
+		setSession((current) =>
+			current
+				? {
+						...current,
+						feedback: current.feedback.filter((item) => item.id !== feedbackId),
+						publication: {
+							...current.publication,
+							totalComments: Math.max(
+								0,
+								current.publication.totalComments - 1,
+							),
+						},
+					}
+				: current,
+		);
+
+		try {
+			const nextSession = await deleteReviewFeedback({
+				sessionId: currentSession.changeSet.id,
+				feedbackId,
+			});
+			setSession(nextSession);
+		} catch (unknownError) {
+			setError(errorMessage(unknownError));
+			setSession(currentSession);
 		}
 	}
 

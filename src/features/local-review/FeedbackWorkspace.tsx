@@ -1,9 +1,16 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowCounterClockwise, Trash } from "@phosphor-icons/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
 	Select,
 	SelectContent,
@@ -16,12 +23,16 @@ import type {
 	ReviewFeedbackState,
 	ReviewSeverity,
 } from "@/domain/workspace-view";
+import type { GhCliStatus } from "@/adapters/tauri-local-review-api";
 
 type FeedbackWorkspaceProps = {
 	feedback: ReviewFeedbackItem[];
-	ghInstalled: boolean;
+	ghStatus: GhCliStatus | null;
 	isRunning?: boolean;
+	repositoryPath: string;
 	onFeedbackChange?: (feedback: ReviewFeedbackItem) => void;
+	onPublishFeedback?: (feedback: ReviewFeedbackItem) => void;
+	onDeleteFeedback?: (feedbackId: string) => void;
 };
 
 const stateOptions: Array<"all" | ReviewFeedbackState> = [
@@ -44,9 +55,12 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
 
 export function FeedbackWorkspace({
 	feedback,
-	ghInstalled,
+	ghStatus,
 	isRunning = false,
+	repositoryPath,
 	onFeedbackChange,
+	onPublishFeedback,
+	onDeleteFeedback,
 }: FeedbackWorkspaceProps) {
 	const [stateFilter, setStateFilter] =
 		useState<(typeof stateOptions)[number]>("all");
@@ -143,10 +157,13 @@ export function FeedbackWorkspace({
 					{filteredFeedback.map((item, index) => (
 						<FeedbackCard
 							feedback={item}
-							ghInstalled={ghInstalled}
+							ghStatus={ghStatus}
 							index={index + 1}
 							key={item.id}
 							onFeedbackChange={onFeedbackChange}
+							onDeleteFeedback={onDeleteFeedback}
+							onPublishFeedback={onPublishFeedback}
+							repositoryPath={repositoryPath}
 						/>
 					))}
 				</div>
@@ -200,17 +217,78 @@ function FilterSelect<T extends string>({
 
 type FeedbackCardProps = {
 	feedback: ReviewFeedbackItem;
-	ghInstalled: boolean;
+	ghStatus: GhCliStatus | null;
 	index: number;
+	repositoryPath: string;
 	onFeedbackChange?: (feedback: ReviewFeedbackItem) => void;
+	onPublishFeedback?: (feedback: ReviewFeedbackItem) => void;
+	onDeleteFeedback?: (feedbackId: string) => void;
 };
 
 function FeedbackCard({
 	feedback,
-	ghInstalled,
+	ghStatus,
 	index,
+	repositoryPath,
 	onFeedbackChange,
+	onPublishFeedback,
+	onDeleteFeedback,
 }: FeedbackCardProps) {
+	const [editableComment, setEditableComment] = useState(
+		feedback.editableComment,
+	);
+	const originalComment = feedback.body;
+	const hasEditedComment = editableComment !== originalComment;
+	const canEdit = Boolean(onFeedbackChange) && feedback.state !== "published";
+	const canPublish =
+		Boolean(onPublishFeedback) &&
+		Boolean(repositoryPath) &&
+		feedback.state !== "published" &&
+		feedback.type === "inline" &&
+		Boolean(feedback.line || feedback.codeLocation) &&
+		Boolean(ghStatus?.installed && ghStatus.authenticated);
+	const publishTooltip =
+		!ghStatus?.installed || !ghStatus.authenticated
+			? "Enabled when gh is installed and authenticated."
+			: feedback.type !== "inline" || !(feedback.line || feedback.codeLocation)
+				? "Only inline feedback with a file and line can be published."
+				: "Publish this inline comment to the current pull request.";
+	const hasQuotedCode = Boolean(feedback.quotedCode?.trim());
+	const limitations = feedback.limitations.filter(
+		(item) => item.trim().length > 0,
+	);
+
+	useEffect(() => {
+		setEditableComment(feedback.editableComment);
+	}, [feedback.editableComment, feedback.id]);
+
+	function persistEditableComment(nextComment: string) {
+		if (nextComment === feedback.editableComment) return;
+
+		onFeedbackChange?.({
+			...feedback,
+			editableComment: nextComment,
+			state: nextFeedbackStateForComment(
+				feedback,
+				nextComment,
+				originalComment,
+			),
+		});
+	}
+
+	function resetEditableComment() {
+		setEditableComment(originalComment);
+		persistEditableComment(originalComment);
+	}
+
+	function currentFeedback(): ReviewFeedbackItem {
+		return {
+			...feedback,
+			editableComment,
+			state: nextFeedbackStateForComment(feedback, editableComment, originalComment),
+		};
+	}
+
 	return (
 		<article className="border border-border bg-card shadow-sm">
 			<div className="border-b border-border bg-muted/30 p-5">
@@ -242,28 +320,30 @@ function FeedbackCard({
 			</div>
 
 			<div className="p-5">
-				<div className="grid gap-5 xl:grid-cols-2">
-					<DetailBlock title="Generated feedback">
-						<p>{feedback.body}</p>
-					</DetailBlock>
-
-					<DetailBlock title="Editable comment">
-						<Textarea
-							className="min-h-24 text-sm leading-6"
-							defaultValue={feedback.editableComment}
-							disabled={!onFeedbackChange || feedback.state === "published"}
-							onBlur={(event) => {
-								const nextComment = event.currentTarget.value;
-								if (nextComment !== feedback.editableComment) {
-									onFeedbackChange?.({
-										...feedback,
-										editableComment: nextComment,
-										state:
-											feedback.state === "draft" ? "edited" : feedback.state,
-									});
+				<div className="grid gap-5 grid-cols-1">
+					<DetailBlock className="col-span-1" title="Editable comment">
+						<div className="flex items-start gap-2">
+							<Textarea
+								className="min-h-28 text-sm leading-6"
+								disabled={!canEdit}
+								onBlur={(event) =>
+									persistEditableComment(event.currentTarget.value)
 								}
-							}}
-						/>
+								onChange={(event) => setEditableComment(event.target.value)}
+								value={editableComment}
+							/>
+							<Button
+								aria-label="Reset editable comment"
+								disabled={!canEdit || !hasEditedComment}
+								onClick={resetEditableComment}
+								size="icon"
+								title="Reset editable comment"
+								type="button"
+								variant="outline"
+							>
+								<ArrowCounterClockwise className="size-4" />
+							</Button>
+						</div>
 					</DetailBlock>
 
 					<DetailBlock title="Suggested action">
@@ -271,89 +351,93 @@ function FeedbackCard({
 					</DetailBlock>
 
 					<DetailBlock title="Evidence">
-						<ul className="space-y-2">
+						<ul className="space-y-3">
 							{feedback.evidence.map((item) => (
-								<li className="text-sm" key={item}>
-									{item}
+								<li key={item}>
+									<pre className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-5">
+										<code>{item}</code>
+									</pre>
 								</li>
 							))}
 						</ul>
 					</DetailBlock>
 
-					<DetailBlock title="Code context">
-						<div className="overflow-x-auto border border-border bg-muted p-3 font-mono text-xs">
-							{feedback.quotedCode ?? "Summary feedback has no inline quote."}
-						</div>
-					</DetailBlock>
+					{hasQuotedCode ? (
+						<DetailBlock title="Code context">
+							<pre className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-5">
+								<code>{feedback.quotedCode}</code>
+							</pre>
+						</DetailBlock>
+					) : null}
 
-					<DetailBlock title="Limitations">
-						<ul className="space-y-2">
-							{feedback.limitations.map((item) => (
-								<li className="text-sm" key={item}>
-									{item}
-								</li>
-							))}
-						</ul>
-					</DetailBlock>
+					{limitations.length > 0 ? (
+						<DetailBlock title="Limitations">
+							<ul className="space-y-2">
+								{limitations.map((item) => (
+									<li className="text-sm" key={item}>
+										{item}
+									</li>
+								))}
+							</ul>
+						</DetailBlock>
+					) : null}
 				</div>
 
-				{ghInstalled ? (
-					<div className="mt-5 flex flex-wrap justify-end gap-2">
-						<Button
-							disabled={!onFeedbackChange || feedback.state === "published"}
-							onClick={() =>
-								onFeedbackChange?.({
-									...feedback,
-									state: "accepted",
-								})
-							}
-							size="sm"
-						>
-							Accept
-						</Button>
-						<Button
-							disabled={!onFeedbackChange || feedback.state === "published"}
-							onClick={() =>
-								onFeedbackChange?.({
-									...feedback,
-									editableComment:
-										feedback.editableComment.trim() || feedback.body,
-									state: "edited",
-								})
-							}
-							size="sm"
-							variant="secondary"
-						>
-							Mark edited
-						</Button>
-						<Button
-							disabled={!onFeedbackChange || feedback.state === "published"}
-							onClick={() =>
-								onFeedbackChange?.({
-									...feedback,
-									state: "dismissed",
-								})
-							}
-							size="sm"
-							variant="outline"
-						>
-							Dismiss
-						</Button>
-					</div>
-				) : null}
+				<div className="mt-5 flex flex-wrap justify-end gap-2">
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<span>
+									<Button
+										disabled={!canPublish}
+										onClick={() => onPublishFeedback?.(currentFeedback())}
+										size="sm"
+										type="button"
+									>
+										Accept
+									</Button>
+								</span>
+							</TooltipTrigger>
+							<TooltipContent>{publishTooltip}</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+					<Button
+						aria-label="Delete feedback"
+						disabled={!onDeleteFeedback}
+						onClick={() => onDeleteFeedback?.(feedback.id)}
+						size="icon-sm"
+						title="Delete feedback"
+						type="button"
+						variant="destructive"
+					>
+						<Trash className="size-4" />
+					</Button>
+				</div>
 			</div>
 		</article>
 	);
 }
 
+function nextFeedbackStateForComment(
+	feedback: ReviewFeedbackItem,
+	nextComment: string,
+	originalComment: string,
+): ReviewFeedbackState {
+	if (feedback.state === "published") return feedback.state;
+	if (nextComment !== originalComment) return "edited";
+	if (feedback.state === "edited") return "draft";
+	return feedback.state;
+}
+
 type DetailBlockProps = {
 	title: string;
 	children: ReactNode;
+	className?: string;
 };
 
-function DetailBlock({ title, children }: DetailBlockProps) {
+function DetailBlock({ title, children, className }: DetailBlockProps) {
 	return (
-		<div>
+		<div className={className}>
 			<h4 className="text-xs font-medium uppercase text-muted-foreground">
 				{title}
 			</h4>
