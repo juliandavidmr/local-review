@@ -35,6 +35,7 @@ pub(super) async fn run_rig_agent(
         let agent = AgentBuilder::new(model)
             .preamble("You are a senior code reviewer preparing draft comments for direct publication. Return only valid JSON matching the requested schema. Do not use markdown fences.")
             .temperature(0.1)
+            .max_tokens(1024)
             .tool(ReadRepositoryFileTool::new(repository_path))
             .tool(SearchRepositoryTool::new(repository_path))
             .build();
@@ -53,6 +54,7 @@ pub(super) async fn run_rig_agent(
         let agent = AgentBuilder::new(model)
             .preamble("You are a senior code reviewer preparing draft comments for direct publication. Return only valid JSON matching the requested schema. Do not use markdown fences.")
             .temperature(0.1)
+            .max_tokens(1024)
             .build();
 
         let response = agent

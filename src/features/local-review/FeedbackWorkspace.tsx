@@ -422,7 +422,7 @@ function FeedbackCard({
 										size="sm"
 										type="button"
 									>
-										Accept
+										Publish comment
 									</Button>
 								</span>
 							</TooltipTrigger>

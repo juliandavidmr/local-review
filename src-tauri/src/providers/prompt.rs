@@ -4,6 +4,7 @@ use crate::domain::{
     ChangeLineKind, ChangeSetSnapshot, ChangeSource, ChangedFile, ReviewProfileItem,
 };
 
+use super::context::ModelPromptBudget;
 use super::tools::{is_sensitive_path, safe_repository_file, ReviewToolError};
 
 pub(super) fn review_prompt(
@@ -11,6 +12,7 @@ pub(super) fn review_prompt(
     change_set: &ChangeSetSnapshot,
     file: &ChangedFile,
     repository_tools_enabled: bool,
+    budget: ModelPromptBudget,
 ) -> String {
     let tool_instruction = if repository_tools_enabled {
         "- Use read_repository_file or search_repository before making claims about callers, definitions, tests, configuration, or behavior outside the visible hunk."
@@ -18,7 +20,7 @@ pub(super) fn review_prompt(
         "- Repository exploration tools are disabled for this pass; return limitations instead of guessing about callers, definitions, tests, configuration, or behavior outside the visible hunk."
     };
 
-    format!(
+    let prompt = format!(
         "Review one file from a Local Review session.\n\nProfile: {}\nCriteria: {}\nProfile prompt: {}\nRepository: {}\nFile: {}\nAdditions: {}\nDeletions: {}\n\nReview standard:\n- Produce only comments that would be credible in a human code review.\n- Each comment must identify a concrete defect, regression risk, missing invariant, unsafe edge case, or architecture boundary violation.\n- Each comment must explain the affected scenario and why the changed code creates the risk.\n- Each comment must include exact evidence from the changed code and, when needed, repository context gathered with tools.\n{}\n- Return no feedback for generic maintainability advice, speculative concerns, style preferences, or comments that only say to add tests without naming the missing behavior.\n- Return no feedback when the only concern is to verify that a dependency, import, enum, map, constant, or configuration remains complete/correct; first inspect it and name the exact missing or wrong entry.\n- Treat limitations as reasons not to comment. Do not turn uncertainty such as \"could be incomplete\", \"import path must be correct\", or \"verify this list\" into review feedback.\n- Do not invent files, tests, commands, product requirements, or repository conventions.\n- Inline feedback must use a changed new-line number or changed new-line range from the hunk.\n- The body must be self-contained and publication-ready because it is what may be posted to GitHub.\n- Return only JSON. Do not wrap it in markdown fences.\n\nEach feedback item must include these keys:\n- title: short specific string\n- severity: one of blocking, important, suggestion, question, nitpick\n- line: changed new-line number for single-line inline feedback\n- startLine: changed new-line number for the first line of a multi-line range, optional when line is present\n- endLine: changed new-line number for the last line of a multi-line range, optional when line is present\n- body: 2-5 sentence complete review comment with the issue, impact, and fix direction\n- suggestedAction: concrete action the author can take\n- confidence: high, medium, or low\n- evidence: array of specific evidence strings, including file:line references or tool-derived observations\n- limitations: array of specific limitations, empty array if none\n\nExample response:\n{{\"feedback\":[{{\"title\":\"Preserve validation before saving settings\",\"severity\":\"important\",\"line\":42,\"body\":\"This path now writes the provider settings before checking whether a selected model exists. If the model probe fails, the app can persist an unusable provider configuration and later review sessions will fail before they start. Keep the validation before the write, or roll back the saved settings when the probe returns no model.\",\"suggestedAction\":\"Move the selected-model validation before persistence, or make the save transactional so invalid provider settings are not stored.\",\"confidence\":\"high\",\"evidence\":[\"src-tauri/src/store.rs:42 saves settings before provider validation\",\"The changed branch handles probe errors after persistence\"],\"limitations\":[]}}]}}\n\nChanged hunks:\n{}\n\nExpanded current-file context around the changed hunks:\n{}\n\nReturn JSON now.",
         profile.name,
         profile.criteria.join(", "),
@@ -28,9 +30,15 @@ pub(super) fn review_prompt(
         file.additions,
         file.deletions,
         tool_instruction,
-        render_hunks(file),
-        render_expanded_file_context(change_set, file)
-    )
+        trim_to_char_budget(render_hunks(file), section_budget(budget.max_prompt_chars, 35)),
+        render_expanded_file_context(
+            change_set,
+            file,
+            section_budget(budget.max_prompt_chars, 30)
+        )
+    );
+
+    enforce_prompt_budget(prompt, budget.max_prompt_chars)
 }
 
 pub(super) fn repository_grounding_prompt(
@@ -38,17 +46,24 @@ pub(super) fn repository_grounding_prompt(
     change_set: &ChangeSetSnapshot,
     file: &ChangedFile,
     previous_response: &str,
+    budget: ModelPromptBudget,
 ) -> String {
-    format!(
+    let prompt = format!(
         "Your previous draft review for this file contained one or more claims that require repository grounding.\n\nYou must now use repository tools before returning final JSON:\n- Use search_repository to find the definition of every imported symbol, constant, enum, map, config object, helper, type, or caller that your feedback depends on.\n- Use read_repository_file to inspect the defining file or surrounding implementation before deciding whether there is a real defect.\n- If the concern is only \"verify this import\", \"ensure this list is complete\", \"could be incomplete\", or \"the import path must be correct\", inspect the relevant code. Return feedback only if you can name the exact missing entry, wrong import, broken contract, or caller scenario.\n- If repository exploration shows the changed code is valid or you cannot identify a concrete defect, return {{\"feedback\":[]}}.\n- Evidence for each returned item must include the tool-inspected file path and line or range that proves the defect.\n\nProfile: {}\nCriteria: {}\nRepository: {}\nFile: {}\n\nPrevious draft response to ground or discard:\n{}\n\nChanged hunks:\n{}\n\nExpanded current-file context around the changed hunks:\n{}\n\nReturn only final JSON now.",
         profile.name,
         profile.criteria.join(", "),
         change_set.repository_path,
         file.path,
-        previous_response,
-        render_hunks(file),
-        render_expanded_file_context(change_set, file)
-    )
+        trim_to_char_budget(previous_response.to_string(), section_budget(budget.max_prompt_chars, 20)),
+        trim_to_char_budget(render_hunks(file), section_budget(budget.max_prompt_chars, 35)),
+        render_expanded_file_context(
+            change_set,
+            file,
+            section_budget(budget.max_prompt_chars, 30)
+        )
+    );
+
+    enforce_prompt_budget(prompt, budget.max_prompt_chars)
 }
 
 fn render_hunks(file: &ChangedFile) -> String {
@@ -78,7 +93,11 @@ fn render_hunks(file: &ChangedFile) -> String {
         .join("\n\n")
 }
 
-fn render_expanded_file_context(change_set: &ChangeSetSnapshot, file: &ChangedFile) -> String {
+fn render_expanded_file_context(
+    change_set: &ChangeSetSnapshot,
+    file: &ChangedFile,
+    max_chars: usize,
+) -> String {
     if is_sensitive_path(&file.path) {
         return "Additional context skipped because the path may contain sensitive data."
             .to_string();
@@ -129,8 +148,9 @@ fn render_expanded_file_context(change_set: &ChangeSetSnapshot, file: &ChangedFi
 
     let mut rendered = Vec::new();
     let mut rendered_lines = 0usize;
+    let mut rendered_chars = 0usize;
     for (start, end) in merged {
-        if rendered_lines >= 260 {
+        if rendered_lines >= 260 || rendered_chars >= max_chars {
             rendered.push("...additional context omitted...".to_string());
             break;
         }
@@ -141,11 +161,43 @@ fn render_expanded_file_context(change_set: &ChangeSetSnapshot, file: &ChangedFi
             .map(|(index, line)| format!("{:>5}: {}", start + index, line))
             .collect::<Vec<_>>()
             .join("\n");
-        rendered.push(format!("{}:{}-{}\n{}", file.path, start, end, body));
+        let block = format!("{}:{}-{}\n{}", file.path, start, end, body);
+        let remaining_chars = max_chars.saturating_sub(rendered_chars);
+        rendered_chars += block.len().min(remaining_chars);
+        rendered.push(trim_to_char_budget(block, remaining_chars));
         rendered_lines += end.saturating_sub(start).saturating_add(1);
     }
 
     rendered.join("\n\n")
+}
+
+fn section_budget(max_prompt_chars: usize, percentage: usize) -> usize {
+    max_prompt_chars
+        .saturating_mul(percentage)
+        .saturating_div(100)
+        .max(1_000)
+}
+
+fn enforce_prompt_budget(prompt: String, max_chars: usize) -> String {
+    if prompt.len() <= max_chars {
+        return prompt;
+    }
+
+    let suffix =
+        "\n\nPrompt was compacted to fit the selected local model context window. Return JSON now.";
+    let budget = max_chars.saturating_sub(suffix.len()).max(1_000);
+    format!("{}{}", trim_to_char_budget(prompt, budget), suffix)
+}
+
+fn trim_to_char_budget(value: String, max_chars: usize) -> String {
+    if value.len() <= max_chars {
+        return value;
+    }
+
+    let keep = max_chars.saturating_sub(80);
+    let mut trimmed = value.chars().take(keep).collect::<String>();
+    trimmed.push_str("\n...omitted to fit model context...");
+    trimmed
 }
 
 fn read_review_file_for_context(

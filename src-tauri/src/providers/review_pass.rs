@@ -2,6 +2,7 @@ use crate::domain::{now_iso, ChangedFile, ModelProviderSettings, ReviewProfileIt
 
 use super::{
     agent::{parse_json_from_model, repair_model_json, run_rig_agent},
+    context::model_prompt_budget,
     feedback_mapping::feedback_from_agent_item,
     feedback_quality::{agent_item_quality_issue, feedback_requires_repository_exploration},
     models::openai_base_url,
@@ -23,7 +24,22 @@ pub(crate) async fn run_review_pass(
         .clone()
         .ok_or_else(|| "No model selected.".to_string())?;
     let base_url = openai_base_url(provider);
-    let prompt = review_prompt(profile, change_set, file, repository_tools_enabled);
+    let prompt_budget = model_prompt_budget(provider, &model, repository_tools_enabled).await;
+    eprintln!(
+        "[local-review-pass] prompt_budget file={} profile={} model={} context_tokens={} max_prompt_chars={}",
+        file.path,
+        profile.name,
+        model,
+        prompt_budget.context_tokens,
+        prompt_budget.max_prompt_chars
+    );
+    let prompt = review_prompt(
+        profile,
+        change_set,
+        file,
+        repository_tools_enabled,
+        prompt_budget,
+    );
     let (mut parsed, mut exploration_requests, mut raw_response) = run_review_agent_and_parse(
         &base_url,
         &model,
@@ -46,7 +62,7 @@ pub(crate) async fn run_review_pass(
             file.path, profile.name
         );
         let grounding_prompt =
-            repository_grounding_prompt(profile, change_set, file, &raw_response);
+            repository_grounding_prompt(profile, change_set, file, &raw_response, prompt_budget);
         let (grounded, retry_exploration_requests, retry_raw_response) =
             run_review_agent_and_parse(
                 &base_url,
