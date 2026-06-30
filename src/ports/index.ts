@@ -20,42 +20,6 @@ import type {
   RepositoryExplorationBudget,
 } from "../domain/exploration"
 
-export interface GitProvider {
-  readonly openRepository: (repositoryPath: string) => Promise<RepositoryDescriptor>
-  readonly buildChangeSet: (input: BuildChangeSetInput) => Promise<ChangeSetSnapshot>
-  readonly getCurrentChangeSet: (source: ChangeSource) => Promise<ChangeSetSnapshot>
-}
-
-export interface RepositoryDescriptor {
-  readonly path: string
-  readonly currentBranch?: string
-  readonly headSha?: string
-}
-
-export interface BuildChangeSetInput {
-  readonly repositoryPath: string
-  readonly source: ChangeSource
-}
-
-export interface PullRequestProvider {
-  readonly getPullRequest: (input: PullRequestReference) => Promise<PullRequestDescriptor>
-  readonly buildPullRequestChangeSet: (input: PullRequestReference) => Promise<ChangeSetSnapshot>
-}
-
-export interface PullRequestReference {
-  readonly owner: string
-  readonly repository: string
-  readonly number: number
-}
-
-export interface PullRequestDescriptor extends PullRequestReference {
-  readonly title: string
-  readonly url: string
-  readonly baseRef: string
-  readonly headRef: string
-  readonly headSha: string
-}
-
 export interface ModelProvider {
   readonly listModels: () => Promise<readonly ModelDescriptor[]>
   readonly runReviewPass: (input: RunReviewPassInput) => Promise<ReviewPassOutput>

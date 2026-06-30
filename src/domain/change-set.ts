@@ -1,7 +1,5 @@
 export type ReviewIntent = "prepare_own_changes" | "review_someone_elses_changes"
 
-export type ChangeSourceType = "pull_request" | "working_tree" | "commit" | "compare_refs"
-
 export type ChangeSource =
   | {
       readonly type: "pull_request"

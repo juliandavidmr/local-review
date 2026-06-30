@@ -47,6 +47,12 @@ export type ReviewProgressEvent = {
   feedback: ReviewFeedbackItem[]
 }
 
+export type GhCliStatus = {
+  installed: boolean
+  authenticated: boolean
+  message: string
+}
+
 type RawReviewWorkspaceSession = Omit<
   ReviewWorkspaceSession,
   "repository" | "changeSource"
@@ -59,12 +65,6 @@ export async function openRepository(
   repositoryPath: string,
 ): Promise<RepositoryDescriptor> {
   return invoke("open_repository", { repositoryPath })
-}
-
-export async function buildWorkingTreeChangeSet(
-  repositoryPath: string,
-): Promise<ChangeSetSnapshot> {
-  return buildChangeSet(repositoryPath, "working_tree")
 }
 
 export async function buildChangeSet(
@@ -89,19 +89,8 @@ export async function saveProfile(
   return invoke("save_profile", { profile })
 }
 
-export async function deleteProfile(
-  profileId: string,
-): Promise<ReviewProfileItem[]> {
-  return invoke("delete_profile", { profileId })
-}
-
 export async function loadProviderSettings(): Promise<ProviderSettings> {
   return invoke("load_provider_settings")
-}
-
-export async function loadReviewSessions(): Promise<ReviewWorkspaceSession[]> {
-  const sessions = await invoke<RawReviewWorkspaceSession[]>("load_review_sessions")
-  return sessions.map(toReviewWorkspaceSession)
 }
 
 export async function loadLatestReviewSession(): Promise<ReviewWorkspaceSession | null> {
@@ -127,6 +116,10 @@ export async function updateReviewFeedback(input: {
 }): Promise<ReviewWorkspaceSession> {
   const saved = await invoke<RawReviewWorkspaceSession>("update_review_feedback", input)
   return toReviewWorkspaceSession(saved)
+}
+
+export async function checkGhCliStatus(): Promise<GhCliStatus> {
+  return invoke("check_gh_cli_status")
 }
 
 export async function saveProviderSettings(

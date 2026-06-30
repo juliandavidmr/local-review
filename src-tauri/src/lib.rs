@@ -1,4 +1,5 @@
 mod domain;
+mod gh;
 mod git;
 mod providers;
 mod store;
@@ -9,9 +10,9 @@ use std::{
 };
 
 use domain::{
-    ChangeSetSnapshot, ChangeSource, ExecutionStatus, ModelDescriptor, ModelProviderSettings,
-    ProviderConnectionStatus, ProviderSettings, PublicationSummary, RepositoryDescriptor,
-    ReviewFeedback, ReviewProfileItem, ReviewWorkspaceSession,
+    ChangeSetSnapshot, ChangeSource, ExecutionStatus, GhCliStatus, ModelDescriptor,
+    ModelProviderSettings, ProviderConnectionStatus, ProviderSettings, PublicationSummary,
+    RepositoryDescriptor, ReviewFeedback, ReviewProfileItem, ReviewWorkspaceSession,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -75,6 +76,11 @@ fn update_review_feedback(
     feedback: ReviewFeedback,
 ) -> Result<ReviewWorkspaceSession, String> {
     store::update_review_feedback(&session_id, &feedback_id, feedback)
+}
+
+#[tauri::command]
+fn check_gh_cli_status() -> GhCliStatus {
+    gh::check_status()
 }
 
 #[tauri::command]
@@ -355,6 +361,7 @@ pub fn run() {
             load_latest_review_session,
             save_review_session,
             update_review_feedback,
+            check_gh_cli_status,
             list_provider_models,
             check_provider_connection,
             cancel_review_session,

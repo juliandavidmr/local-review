@@ -33,17 +33,6 @@ export function applyCurationDecision(
   }
 }
 
-export function applyCurationDecisions(
-  feedbackItems: readonly ReviewFeedback[],
-  decisions: readonly CurationDecision[],
-): readonly ReviewFeedback[] {
-  return decisions.reduce(
-    (items, decision) =>
-      items.map((feedback) => applyCurationDecision(feedback, decision)),
-    feedbackItems,
-  )
-}
-
 function editFeedback(
   feedback: ReviewFeedback,
   decision: Extract<CurationDecision, { readonly type: "edit" }>,
