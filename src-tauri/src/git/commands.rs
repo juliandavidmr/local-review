@@ -33,11 +33,7 @@ pub fn diff_args(repository_path: &str, source: &ChangeSource) -> Result<Vec<Str
         ]),
         ChangeSource::CompareRefs {
             base_ref, head_ref, ..
-        } => Ok(vec![
-            "diff".to_string(),
-            base_ref.to_string(),
-            head_ref.to_string(),
-        ]),
+        } => Ok(vec!["diff".to_string(), format!("{base_ref}...{head_ref}")]),
     }
 }
 
@@ -105,4 +101,24 @@ fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
     }
 
     Err("Current branch review needs an upstream branch or a main/master base ref.".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compare_refs_uses_merge_base_diff() {
+        let args = diff_args(
+            "/repo",
+            &ChangeSource::CompareRefs {
+                repository_path: "/repo".to_string(),
+                base_ref: "origin/main".to_string(),
+                head_ref: "feature".to_string(),
+            },
+        )
+        .expect("compare refs diff args should not inspect the repository");
+
+        assert_eq!(args, vec!["diff", "origin/main...feature"]);
+    }
 }
