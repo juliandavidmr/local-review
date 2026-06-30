@@ -70,22 +70,6 @@ export function LocalReviewWorkspace() {
 		void loadInitialState();
 	}, []);
 
-	function updateProfile(
-		profileId: string,
-		update: (profile: (typeof profiles)[number]) => (typeof profiles)[number],
-	) {
-		setProfiles((current) =>
-			current.map((profile) => {
-				const nextProfile =
-					profile.id === profileId ? update(profile) : profile;
-				if (nextProfile.id === profileId) {
-					void saveProfile(nextProfile);
-				}
-				return nextProfile;
-			}),
-		);
-	}
-
 	if (loading) {
 		return (
 			<main className="flex min-h-screen items-center justify-center bg-muted/40 p-6">
@@ -221,30 +205,6 @@ export function LocalReviewWorkspace() {
 		>
 			<div className="space-y-5">
 				<SelectedProviderSummary providerSettings={session.providerSettings} />
-				<ProfileManager
-					onCreateProfile={(profile) =>
-						setProfiles((current) => [profile, ...current])
-					}
-					onDeleteProfile={(profileId) =>
-						setProfiles((current) =>
-							current.filter((profile) => profile.id !== profileId),
-						)
-					}
-					onToggleDefault={(profileId, enabledByDefault) =>
-						updateProfile(profileId, (profile) => ({
-							...profile,
-							enabledByDefault,
-						}))
-					}
-					onToggleSelected={(profileId, selected) =>
-						updateProfile(profileId, (profile) => ({
-							...profile,
-							selected,
-						}))
-					}
-					profiles={profiles}
-					repositoryPath={session.repository.path}
-				/>
 				<SetupOverview session={session} />
 				<ExecutionStatus execution={session.execution} />
 				<FeedbackWorkspace

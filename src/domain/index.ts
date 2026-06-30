@@ -1,5 +1,4 @@
 export * from "./change-set"
-export * from "./curation"
 export * from "./exploration"
 export * from "./publication"
 export * from "./provider-settings"

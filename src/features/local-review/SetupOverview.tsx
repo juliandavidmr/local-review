@@ -10,7 +10,7 @@ export function SetupOverview({ session }: SetupOverviewProps) {
 	);
 
 	return (
-		<section className="grid gap-4 lg:grid-cols-3">
+		<section className="grid gap-4 lg:grid-cols-2">
 			<div className="border border-border bg-card p-4">
 				<p className="text-xs font-medium uppercase text-muted-foreground">
 					Repository
@@ -26,29 +26,6 @@ export function SetupOverview({ session }: SetupOverviewProps) {
 					<div>
 						<dt className="text-muted-foreground">Branch</dt>
 						<dd>{session.repository.branch}</dd>
-					</div>
-				</dl>
-			</div>
-
-			<div className="border border-border bg-card p-4">
-				<p className="text-xs font-medium uppercase text-muted-foreground">
-					Change source
-				</p>
-				<h2 className="mt-2 text-lg font-semibold">
-					{session.changeSource.target}
-				</h2>
-				<dl className="mt-4 space-y-2 text-sm">
-					<div>
-						<dt className="text-muted-foreground">Source</dt>
-						<dd>{session.changeSource.kind}</dd>
-					</div>
-					<div>
-						<dt className="text-muted-foreground">Intent</dt>
-						<dd>{session.changeSource.intent}</dd>
-					</div>
-					<div>
-						<dt className="text-muted-foreground">Snapshot</dt>
-						<dd>{session.changeSource.snapshot}</dd>
 					</div>
 				</dl>
 			</div>
