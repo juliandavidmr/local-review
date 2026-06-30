@@ -1,3 +1,5 @@
+import { CircleNotch, GitBranch, Sparkle } from "@phosphor-icons/react";
+import type React from "react";
 import { Progress } from "@/components/ui/progress";
 import type { ReviewWorkspaceView } from "@/domain/workspace-view";
 
@@ -48,11 +50,35 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
 
 			{isRunning ? (
 				<div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
-					<p className="font-medium">Review is running.</p>
-					<p className="mt-1 text-muted-foreground">
-						The workspace is open while model passes run. Feedback appears as
-						soon as each pass returns usable comments.
-					</p>
+					<div className="flex items-start gap-3">
+						<CircleNotch className="mt-0.5 size-5 animate-spin text-foreground" />
+						<div className="min-w-0 flex-1">
+							<p className="font-medium">Review is running.</p>
+							<p className="mt-1 text-muted-foreground">
+								Feedback appears as soon as each pass returns usable comments.
+							</p>
+							<div className="mt-3 grid gap-2">
+								<ActivityRow
+									icon={<Sparkle className="size-4" />}
+									label="Phase"
+									value={execution.currentPhase ?? "Waiting for model response"}
+								/>
+								{execution.currentFile ? (
+									<ActivityRow
+										icon={<GitBranch className="size-4" />}
+										label="File"
+										value={execution.currentFile}
+									/>
+								) : null}
+								{execution.currentProfile ? (
+									<ActivityRow
+										label="Profile"
+										value={execution.currentProfile}
+									/>
+								) : null}
+							</div>
+						</div>
+					</div>
 				</div>
 			) : isCancelled ? (
 				<div className="mt-4 border border-border bg-muted/40 p-3 text-sm">
@@ -90,6 +116,26 @@ export function ExecutionStatus({ execution }: ExecutionStatusProps) {
 				<Metric label="Guardrail hits" value={execution.guardrailHits} />
 			</div>
 		</section>
+	);
+}
+
+type ActivityRowProps = {
+	icon?: React.ReactNode;
+	label: string;
+	value: string;
+};
+
+function ActivityRow({ icon, label, value }: ActivityRowProps) {
+	return (
+		<div className="flex min-w-0 items-center gap-2 text-xs">
+			<span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+				{icon}
+			</span>
+			<span className="shrink-0 font-medium text-muted-foreground">{label}</span>
+			<span className="truncate text-foreground" title={value}>
+				{value}
+			</span>
+		</div>
 	);
 }
 

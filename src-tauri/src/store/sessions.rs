@@ -157,6 +157,9 @@ mod tests {
                 modified_lines: 1,
                 exploration_requests: 0,
                 guardrail_hits: 0,
+                current_file: None,
+                current_profile: None,
+                current_phase: None,
             },
             feedback: Vec::new(),
             publication: PublicationSummary {

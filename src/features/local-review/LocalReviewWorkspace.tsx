@@ -379,7 +379,11 @@ function applyReviewProgress(
 			status: execution.status,
 			completedPasses: execution.completedPasses,
 			totalPasses: execution.totalPasses,
+			explorationRequests: execution.explorationRequests,
 			guardrailHits: execution.guardrailHits,
+			currentFile: execution.currentFile,
+			currentProfile: execution.currentProfile,
+			currentPhase: execution.currentPhase,
 		},
 		feedback: nextFeedback,
 		publication: {
@@ -495,6 +499,9 @@ function createRunningSession(input: {
 			modifiedLines,
 			explorationRequests: 0,
 			guardrailHits: 0,
+			currentFile: undefined,
+			currentProfile: undefined,
+			currentPhase: "Preparing review passes",
 		},
 		feedback: [],
 		publication: {

@@ -9,3 +9,4 @@ mod types;
 
 pub use models::{check_connection, list_models};
 pub(crate) use review_pass::run_review_pass;
+pub(crate) use types::AgentProgressContext;

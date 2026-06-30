@@ -7,24 +7,54 @@ use std::sync::{
     Arc,
 };
 
+use crate::domain::ExecutionStatus;
+use tauri::Emitter;
+
 pub(super) use read_file::ReadRepositoryFileTool;
 pub(super) use safety::{is_sensitive_path, safe_repository_file};
 pub(super) use search::SearchRepositoryTool;
 
+use super::types::AgentProgressContext;
+
 #[derive(Clone)]
 pub(super) struct ToolUsageHook {
     pub exploration_requests: Arc<AtomicU32>,
+    pub progress: Option<AgentProgressContext>,
 }
 
 impl<M: rig::completion::CompletionModel> rig::agent::PromptHook<M> for ToolUsageHook {
     async fn on_tool_call(
         &self,
-        _tool_name: &str,
+        tool_name: &str,
         _tool_call_id: Option<String>,
         _internal_call_id: &str,
         _args: &str,
     ) -> rig::agent::ToolCallHookAction {
-        self.exploration_requests.fetch_add(1, Ordering::SeqCst);
+        let exploration_requests = self.exploration_requests.fetch_add(1, Ordering::SeqCst) + 1;
+        if let Some(progress) = &self.progress {
+            let _ = progress.app.emit(
+                "review-progress",
+                serde_json::json!({
+                    "reviewId": progress.review_id,
+                    "execution": ExecutionStatus {
+                        status: "running".to_string(),
+                        completed_passes: progress.completed_passes,
+                        total_passes: progress.total_passes,
+                        changed_files: 0,
+                        modified_lines: 0,
+                        exploration_requests,
+                        guardrail_hits: progress.failed_passes,
+                        current_file: Some(progress.current_file.clone()),
+                        current_profile: Some(progress.current_profile.clone()),
+                        current_phase: Some(format!(
+                            "{}: {tool_name}",
+                            progress.current_phase
+                        )),
+                    },
+                    "feedback": Vec::<crate::domain::ReviewFeedback>::new(),
+                }),
+            );
+        }
         rig::agent::ToolCallHookAction::Continue
     }
 }

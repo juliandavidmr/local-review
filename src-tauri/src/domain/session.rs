@@ -14,6 +14,12 @@ pub struct ExecutionStatus {
     pub modified_lines: u32,
     pub exploration_requests: u32,
     pub guardrail_hits: u32,
+    #[serde(default)]
+    pub current_file: Option<String>,
+    #[serde(default)]
+    pub current_profile: Option<String>,
+    #[serde(default)]
+    pub current_phase: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

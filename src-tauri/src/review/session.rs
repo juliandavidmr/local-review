@@ -70,6 +70,9 @@ pub async fn run_review_session(
                     total_passes,
                     failed_passes,
                     exploration_requests,
+                    Some(file.path.clone()),
+                    Some(profile.name.clone()),
+                    Some("Stopping review after current cancellation request".to_string()),
                     Vec::new(),
                 );
                 break;
@@ -86,6 +89,20 @@ pub async fn run_review_session(
             );
 
             let mut pass_feedback = Vec::new();
+            emit_review_progress(
+                &app,
+                &review_id,
+                "running",
+                completed_passes,
+                total_passes,
+                failed_passes,
+                exploration_requests,
+                Some(file.path.clone()),
+                Some(profile.name.clone()),
+                Some("Reviewing changed hunks with the selected model".to_string()),
+                Vec::new(),
+            );
+
             match providers::run_review_pass(
                 &provider,
                 profile,
@@ -93,6 +110,16 @@ pub async fn run_review_session(
                 file,
                 pass_index,
                 repository_tools_enabled,
+                crate::providers::AgentProgressContext {
+                    app: app.clone(),
+                    review_id: review_id.clone(),
+                    current_file: file.path.clone(),
+                    current_profile: profile.name.clone(),
+                    completed_passes,
+                    total_passes,
+                    failed_passes,
+                    current_phase: "Exploring repository context".to_string(),
+                },
             )
             .await
             {
@@ -132,6 +159,9 @@ pub async fn run_review_session(
                 total_passes,
                 failed_passes,
                 exploration_requests,
+                Some(file.path.clone()),
+                Some(profile.name.clone()),
+                Some("Finished pass and publishing usable feedback".to_string()),
                 pass_feedback,
             );
         }
@@ -175,6 +205,9 @@ pub async fn run_review_session(
             modified_lines,
             exploration_requests,
             guardrail_hits: failed_passes,
+            current_file: None,
+            current_profile: None,
+            current_phase: None,
         },
         feedback,
         publication,

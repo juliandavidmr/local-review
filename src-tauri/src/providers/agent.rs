@@ -5,7 +5,7 @@ use std::sync::{
 
 use super::{
     tools::{ReadRepositoryFileTool, SearchRepositoryTool, ToolUsageHook},
-    types::{AgentFeedbackOutput, ReviewAgentResult},
+    types::{AgentFeedbackOutput, AgentProgressContext, ReviewAgentResult},
 };
 
 pub(super) async fn run_rig_agent(
@@ -14,6 +14,7 @@ pub(super) async fn run_rig_agent(
     prompt: &str,
     repository_path: &str,
     repository_tools_enabled: bool,
+    progress: Option<AgentProgressContext>,
 ) -> Result<ReviewAgentResult, String> {
     use rig::{
         agent::AgentBuilder, client::CompletionClient, completion::Prompt, providers::openai,
@@ -29,6 +30,7 @@ pub(super) async fn run_rig_agent(
         let exploration_requests = Arc::new(AtomicU32::new(0));
         let hook = ToolUsageHook {
             exploration_requests: exploration_requests.clone(),
+            progress,
         };
         let agent = AgentBuilder::new(model)
             .preamble("You are a senior code reviewer preparing draft comments for direct publication. Return only valid JSON matching the requested schema. Do not use markdown fences.")
@@ -75,7 +77,7 @@ pub(super) async fn repair_model_json(
         raw
     );
 
-    let result = run_rig_agent(base_url, model, &prompt, ".", false).await?;
+    let result = run_rig_agent(base_url, model, &prompt, ".", false, None).await?;
     Ok(result.raw)
 }
 
@@ -86,6 +88,12 @@ pub(super) fn parse_json_from_model(raw: &str) -> Result<AgentFeedbackOutput, St
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
+
+    if trimmed.is_empty() {
+        return Ok(AgentFeedbackOutput {
+            feedback: Vec::new(),
+        });
+    }
 
     serde_json::from_str(trimmed)
         .or_else(|_| {
@@ -98,4 +106,23 @@ pub(super) fn parse_json_from_model(raw: &str) -> Result<AgentFeedbackOutput, St
             serde_json::from_str(&trimmed[start..=end])
         })
         .map_err(|error| format!("Invalid model JSON: {error}; raw: {raw}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_json_from_model;
+
+    #[test]
+    fn parses_empty_object_as_no_feedback() {
+        let parsed = parse_json_from_model("{}").expect("empty object should be accepted");
+
+        assert!(parsed.feedback.is_empty());
+    }
+
+    #[test]
+    fn parses_empty_response_as_no_feedback() {
+        let parsed = parse_json_from_model("").expect("empty response should be accepted");
+
+        assert!(parsed.feedback.is_empty());
+    }
 }

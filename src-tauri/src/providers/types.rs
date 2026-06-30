@@ -1,9 +1,11 @@
 use crate::domain::ReviewFeedback;
 use serde::Deserialize;
+use tauri::AppHandle;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct AgentFeedbackOutput {
+    #[serde(default)]
     pub feedback: Vec<AgentFeedbackItem>,
 }
 
@@ -39,6 +41,18 @@ pub(super) fn default_feedback_severity() -> String {
 pub(super) struct ReviewAgentResult {
     pub raw: String,
     pub exploration_requests: u32,
+}
+
+#[derive(Clone)]
+pub(crate) struct AgentProgressContext {
+    pub app: AppHandle,
+    pub review_id: String,
+    pub current_file: String,
+    pub current_profile: String,
+    pub completed_passes: u32,
+    pub total_passes: u32,
+    pub failed_passes: u32,
+    pub current_phase: String,
 }
 
 pub(crate) struct ReviewPassResult {

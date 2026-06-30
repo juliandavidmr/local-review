@@ -26,6 +26,9 @@ pub(super) fn agent_item_quality_issue(
     if looks_like_generic_review_text(&body) || looks_like_generic_review_text(action) {
         return Some("generic_review_text".to_string());
     }
+    if looks_like_verification_task_without_defect_evidence(item, &body, action) {
+        return Some("verification_task_without_defect_evidence".to_string());
+    }
     if item
         .limitations
         .iter()
@@ -40,6 +43,17 @@ pub(super) fn agent_item_quality_issue(
     }
 
     None
+}
+
+pub(super) fn feedback_requires_repository_exploration(item: &AgentFeedbackItem) -> bool {
+    let body = first_non_empty(&[item.body.clone(), item.message.clone()]).unwrap_or_default();
+    let combined = verification_context(item, &body, &item.suggested_action);
+
+    mentions_external_review_target(&combined)
+        || item
+            .limitations
+            .iter()
+            .any(|limitation| mentions_external_review_target(&limitation.to_lowercase()))
 }
 
 fn looks_like_generic_review_text(value: &str) -> bool {
@@ -58,6 +72,65 @@ fn looks_like_generic_review_text(value: &str) -> bool {
     ];
 
     generic_phrases.iter().any(|phrase| lower.contains(phrase))
+}
+
+fn looks_like_verification_task_without_defect_evidence(
+    item: &AgentFeedbackItem,
+    body: &str,
+    action: &str,
+) -> bool {
+    let combined = verification_context(item, body, action);
+    let asks_for_verification = mentions_external_review_target(&combined);
+
+    asks_for_verification && !evidence_names_actual_defect(&item.evidence)
+}
+
+fn verification_context(item: &AgentFeedbackItem, body: &str, action: &str) -> String {
+    std::iter::once(body)
+        .chain(std::iter::once(action))
+        .chain(item.limitations.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .to_lowercase()
+}
+
+fn mentions_external_review_target(value: &str) -> bool {
+    value.contains("verify the import")
+        || value.contains("verify import")
+        || value.contains("import path")
+        || value.contains("properly imported")
+        || value.contains("ensure all necessary")
+        || value.contains("ensure all required")
+        || value.contains("review ") && value.contains(" to ensure ")
+        || value.contains("may miss edge cases")
+        || value.contains("if ") && value.contains(" incomplete")
+        || value.contains("missing entries in")
+        || value.contains("could cause missing")
+        || value.contains("must be correct")
+        || value.contains("imported symbol")
+        || value.contains("external constant")
+        || value.contains("configuration remains")
+}
+
+fn evidence_names_actual_defect(evidence: &[String]) -> bool {
+    evidence.iter().any(|value| {
+        let lower = value.to_lowercase();
+        [
+            "is missing",
+            "missing from",
+            "does not include",
+            "not included",
+            "unresolved import",
+            "does not export",
+            "compile error",
+            "runtime error",
+            "required mime type",
+            "expected mime type",
+            "expected video type",
+        ]
+        .iter()
+        .any(|phrase| lower.contains(phrase))
+    })
 }
 
 #[cfg(test)]
@@ -92,6 +165,36 @@ mod tests {
         assert_eq!(
             agent_item_quality_issue(&item, &changed_file()),
             Some("generic_review_text".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_verification_task_framed_as_feedback() {
+        let item = AgentFeedbackItem {
+            title: "Verify video MIME type source".to_string(),
+            severity: "suggestion".to_string(),
+            file: None,
+            line: Some(10),
+            start_line: None,
+            end_line: None,
+            body: "The code now dynamically generates the list of allowed MIME types based on the contents of EXTENDED_VIDEOS. This improves maintainability but may miss edge cases if EXTENDED_VIDEOS is incomplete or not properly imported.".to_string(),
+            message: String::new(),
+            suggested_action: "Review EXTENDED_VIDEOS to ensure all necessary video extensions are included and verify the import path.".to_string(),
+            confidence: Some("low".to_string()),
+            evidence: vec![
+                "src/example.rs:10 derives allowed MIME types from EXTENDED_VIDEOS.".to_string(),
+            ],
+            limitations: vec![
+                "Missing entries in EXTENDED_VIDEOS could cause missing MIME types".to_string(),
+                "Import path for EXTENDED_VIDEOS must be correct".to_string(),
+            ],
+            quoted_code: None,
+        };
+
+        assert!(feedback_requires_repository_exploration(&item));
+        assert_eq!(
+            agent_item_quality_issue(&item, &changed_file()),
+            Some("verification_task_without_defect_evidence".to_string())
         );
     }
 

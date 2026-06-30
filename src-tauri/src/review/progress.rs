@@ -19,6 +19,9 @@ pub(super) fn emit_review_progress(
     total_passes: u32,
     failed_passes: u32,
     exploration_requests: u32,
+    current_file: Option<String>,
+    current_profile: Option<String>,
+    current_phase: Option<String>,
     feedback: Vec<ReviewFeedback>,
 ) {
     let _ = app.emit(
@@ -33,6 +36,9 @@ pub(super) fn emit_review_progress(
                 modified_lines: 0,
                 exploration_requests,
                 guardrail_hits: failed_passes,
+                current_file,
+                current_profile,
+                current_phase,
             },
             feedback,
         },

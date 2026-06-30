@@ -79,6 +79,9 @@ export type ReviewWorkspaceView = {
     modifiedLines: number
     explorationRequests: number
     guardrailHits: number
+    currentFile?: string
+    currentProfile?: string
+    currentPhase?: string
   }
   feedback: ReviewFeedbackItem[]
   publication: {
