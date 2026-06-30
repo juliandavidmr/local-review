@@ -30,8 +30,11 @@ impl<M: rig::completion::CompletionModel> rig::agent::PromptHook<M> for ToolUsag
         _internal_call_id: &str,
         _args: &str,
     ) -> rig::agent::ToolCallHookAction {
-        let exploration_requests = self.exploration_requests.fetch_add(1, Ordering::SeqCst) + 1;
+        let pass_exploration_requests =
+            self.exploration_requests.fetch_add(1, Ordering::SeqCst) + 1;
         if let Some(progress) = &self.progress {
+            let exploration_requests =
+                progress.existing_exploration_requests + pass_exploration_requests;
             let _ = progress.app.emit(
                 "review-progress",
                 serde_json::json!({

@@ -118,6 +118,7 @@ pub async fn run_review_session(
                     completed_passes,
                     total_passes,
                     failed_passes,
+                    existing_exploration_requests: exploration_requests,
                     current_phase: "Exploring repository context".to_string(),
                 },
             )

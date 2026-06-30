@@ -42,15 +42,23 @@ pub(super) fn canonical_repository_root(repository_path: &str) -> Result<PathBuf
 
 pub(super) fn should_skip_repository_path(relative_path: &str, is_dir: bool) -> bool {
     let normalized = relative_path.replace('\\', "/");
-    let first = normalized.split('/').next().unwrap_or("");
     if is_sensitive_path(&normalized) {
         return true;
     }
     if is_dir {
-        matches!(
-            first,
-            ".git" | "node_modules" | "target" | "dist" | "build" | ".next" | ".turbo" | ".cache"
-        )
+        normalized.split('/').any(|component| {
+            matches!(
+                component,
+                ".git"
+                    | "node_modules"
+                    | "target"
+                    | "dist"
+                    | "build"
+                    | ".next"
+                    | ".turbo"
+                    | ".cache"
+            )
+        })
     } else {
         false
     }
@@ -72,4 +80,16 @@ pub(in crate::providers) fn is_sensitive_path(path: &str) -> bool {
         || file_name.contains("id_rsa")
         || file_name.contains("secret")
         || file_name.contains("credential")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_skip_repository_path;
+
+    #[test]
+    fn skips_dependency_directories_at_any_depth() {
+        assert!(should_skip_repository_path("node_modules", true));
+        assert!(should_skip_repository_path("apps/web/node_modules", true));
+        assert!(should_skip_repository_path("apps/web/.next/cache", true));
+    }
 }
