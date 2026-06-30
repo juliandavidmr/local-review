@@ -1,12 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-	ArrowsClockwiseIcon,
-	CheckCircle,
-	FolderOpen,
-	Plus,
-	WarningCircle,
-	XCircle,
-} from "@phosphor-icons/react";
+import { FolderOpen } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,23 +11,22 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
 	selectSingleModelProvider,
 	updateModelProviderSettings,
-	type ModelProviderSettings,
 	type ProviderSettings,
 } from "@/domain";
 import type {
 	GhCliStatus,
 	ReviewChangeSourceKind,
 } from "@/adapters/tauri-local-review-api";
-import type {
-	ReviewProfileItem,
-	ReviewProfileScopeKind,
-} from "@/domain/workspace-view";
+import type { ReviewProfileItem } from "@/domain/workspace-view";
 
+import { GhStatusControl } from "./GhStatusControl";
+import { ProviderSetupCard } from "./ProviderSetupCard";
+import { ReviewProfilesSetup } from "./ReviewProfilesSetup";
+import { ReviewSourceSelector } from "./ReviewSourceSelector";
+import { SetupBlock } from "./SetupBlock";
 import { useProviderModelProbe } from "./useProviderModelProbe";
 
 type InitialSetupScreenProps = {
@@ -52,34 +44,6 @@ type InitialSetupScreenProps = {
 	}) => void | Promise<void>;
 };
 
-type ProfileDraft = {
-	name: string;
-	prompt: string;
-	scopeKind: ReviewProfileScopeKind;
-};
-
-const reviewSourceOptions: Array<{
-	value: ReviewChangeSourceKind;
-	label: string;
-	description: string;
-}> = [
-	{
-		value: "current_branch",
-		label: "Current branch",
-		description: "Diff the current branch against its upstream or main base.",
-	},
-	{
-		value: "staged_changes",
-		label: "Staged changes",
-		description: "Review only changes already staged with git add.",
-	},
-	{
-		value: "unstaged_changes",
-		label: "Unstaged changes",
-		description: "Review local working tree changes that are not staged.",
-	},
-];
-
 export function InitialSetupScreen({
 	error,
 	initialProfiles,
@@ -96,11 +60,6 @@ export function InitialSetupScreen({
 	);
 	const [reviewSourceKind, setReviewSourceKind] =
 		useState<ReviewChangeSourceKind>("current_branch");
-	const [profileDraft, setProfileDraft] = useState<ProfileDraft>({
-		name: "",
-		prompt: "",
-		scopeKind: "global",
-	});
 	const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
 		useProviderModelProbe(settings, setSettings);
 	const autoTestedLmStudio = useRef(false);
@@ -164,30 +123,6 @@ export function InitialSetupScreen({
 				baseUrl,
 			})),
 		);
-	}
-
-	function createProfile() {
-		if (!profileDraft.name.trim() || !profileDraft.prompt.trim()) return;
-
-		setProfiles((current) => [
-			{
-				id: createProfileId(profileDraft.name),
-				name: profileDraft.name.trim(),
-				scope: scopeLabel(profileDraft.scopeKind),
-				scopeKind: profileDraft.scopeKind,
-				selected: true,
-				enabledByDefault: profileDraft.scopeKind === "global",
-				criteria: [profileDraft.name.trim()],
-				fileGlobs: ["*"],
-				prompt: profileDraft.prompt.trim(),
-			},
-			...current,
-		]);
-		setProfileDraft({
-			name: "",
-			prompt: "",
-			scopeKind: "global",
-		});
 	}
 
 	return (
@@ -260,111 +195,17 @@ export function InitialSetupScreen({
 					</SetupBlock>
 
 					<SetupBlock title="Review source">
-						<div className="grid gap-3 md:grid-cols-3">
-							{reviewSourceOptions.map((option) => (
-								<button
-									className={
-										reviewSourceKind === option.value
-											? "border border-foreground bg-background p-3 text-left"
-											: "border border-border bg-background p-3 text-left hover:bg-muted"
-									}
-									key={option.value}
-									onClick={() => setReviewSourceKind(option.value)}
-									type="button"
-								>
-									<span className="block text-sm font-medium">
-										{option.label}
-									</span>
-									<span className="mt-1 block text-xs text-muted-foreground">
-										{option.description}
-									</span>
-								</button>
-							))}
-						</div>
+						<ReviewSourceSelector
+							onChange={setReviewSourceKind}
+							value={reviewSourceKind}
+						/>
 					</SetupBlock>
 
 					<SetupBlock title="Review profiles">
-						<div className="grid gap-3 md:grid-cols-1">
-							<div className="space-y-3">
-								{profiles.map((profile) => (
-									<label
-										className="flex items-start justify-between gap-3 border border-border p-3"
-										key={profile.id}
-									>
-										<span>
-											<span className="block text-sm font-medium">
-												{profile.name}
-											</span>
-											<span className="mt-1 block text-xs text-muted-foreground">
-												{profile.scope}
-											</span>
-										</span>
-										<Switch
-											checked={profile.selected}
-											onCheckedChange={(selected) =>
-												setProfiles((current) =>
-													current.map((candidate) =>
-														candidate.id === profile.id
-															? { ...candidate, selected }
-															: candidate,
-													),
-												)
-											}
-										/>
-									</label>
-								))}
-							</div>
-							<div className="space-y-3 border border-border p-3">
-								<p className="text-sm font-medium">Create manual profile</p>
-								<Input
-									onChange={(event) =>
-										setProfileDraft((current) => ({
-											...current,
-											name: event.target.value,
-										}))
-									}
-									placeholder="Security"
-									value={profileDraft.name}
-								/>
-								<Select
-									onValueChange={(scopeKind) =>
-										setProfileDraft((current) => ({
-											...current,
-											scopeKind: scopeKind as ReviewProfileScopeKind,
-										}))
-									}
-									value={profileDraft.scopeKind}
-								>
-									<SelectTrigger>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="global">Global</SelectItem>
-										<SelectItem value="repository">Repository path</SelectItem>
-										<SelectItem value="folder">Folder path</SelectItem>
-									</SelectContent>
-								</Select>
-								<Textarea
-									className="min-h-24"
-									onChange={(event) =>
-										setProfileDraft((current) => ({
-											...current,
-											prompt: event.target.value,
-										}))
-									}
-									placeholder="Review for..."
-									value={profileDraft.prompt}
-								/>
-								<Button
-									className="w-full"
-									onClick={createProfile}
-									variant="outline"
-								>
-									<Plus className="size-4" />
-									Add profile
-								</Button>
-							</div>
-						</div>
+						<ReviewProfilesSetup
+							onProfilesChange={setProfiles}
+							profiles={profiles}
+						/>
 					</SetupBlock>
 				</div>
 
@@ -389,178 +230,4 @@ export function InitialSetupScreen({
 			</section>
 		</main>
 	);
-}
-
-type ProviderSetupCardProps = {
-	provider: ModelProviderSettings;
-	models: readonly { displayName: string; modelId: string }[];
-	status?: { ok: boolean; message: string };
-	isLoading: boolean;
-	onBaseUrlChange: (providerId: string, baseUrl: string) => void;
-	onModelSelect: (providerId: string, selectedModelId: string) => void;
-	onRefresh: (provider: ModelProviderSettings) => void;
-};
-
-type GhStatusControlProps = {
-	status: GhCliStatus | null;
-	onRefresh: () => void | Promise<void>;
-};
-
-function GhStatusControl({ status, onRefresh }: GhStatusControlProps) {
-	const icon = !status ? (
-		<WarningCircle className="size-5 text-muted-foreground" />
-	) : status.installed && status.authenticated ? (
-		<CheckCircle className="size-5 text-foreground" />
-	) : status.installed ? (
-		<WarningCircle className="size-5 text-muted-foreground" />
-	) : (
-		<XCircle className="size-5 text-destructive" />
-	);
-	const label = !status
-		? "Checking gh CLI"
-		: status.installed && status.authenticated
-			? "gh CLI ready"
-			: status.installed
-				? "gh CLI not authenticated"
-				: "gh CLI not installed";
-
-	return (
-		<section className="flex flex-col gap-3 border border-border bg-background p-4 md:flex-row md:items-center md:justify-between">
-			<div className="flex items-start gap-3">
-				{icon}
-				<div>
-					<h2 className="text-sm font-semibold">{label}</h2>
-					<p className="mt-1 text-xs text-muted-foreground">
-						{status?.message ??
-							"Checking whether pull request publication can use GitHub CLI."}
-					</p>
-				</div>
-			</div>
-			<Button onClick={onRefresh} size="sm" variant="outline">
-				<ArrowsClockwiseIcon className="size-4" />
-				Refresh
-			</Button>
-		</section>
-	);
-}
-
-function ProviderSetupCard({
-	provider,
-	models,
-	status,
-	isLoading,
-	onBaseUrlChange,
-	onModelSelect,
-	onRefresh,
-}: ProviderSetupCardProps) {
-	const modelOptions = [
-		...models.map((model) => ({
-			label: model.displayName,
-			value: model.modelId,
-		})),
-	];
-	const isLmStudio = provider.kind === "lm_studio";
-
-	return (
-		<div className="border border-border p-3">
-			<div>
-				<p className="font-medium">{provider.name}</p>
-				<p className="mt-1 text-xs text-muted-foreground">
-					{isLmStudio
-						? "LM Studio local OpenAI-compatible server"
-						: "Ollama local API endpoint"}
-				</p>
-			</div>
-			<div className="mt-3 space-y-2">
-				<Label htmlFor={`${provider.id}-setup-url`}>Base URL</Label>
-				<Input
-					id={`${provider.id}-setup-url`}
-					onChange={(event) => onBaseUrlChange(provider.id, event.target.value)}
-					value={provider.baseUrl}
-				/>
-			</div>
-			<div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
-				<div className="w-full space-y-2">
-					<Label>Model</Label>
-					<Select
-						onValueChange={(modelId) => onModelSelect(provider.id, modelId)}
-						value={provider.selectedModelId ?? ""}
-					>
-						<SelectTrigger>
-							<SelectValue placeholder="Select model" />
-						</SelectTrigger>
-						<SelectContent>
-							{modelOptions.map((model) => (
-								<SelectItem key={model.value} value={model.value}>
-									{model.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
-				<div className="flex items-end">
-					<Button
-						className="w-full md:w-auto"
-						disabled={isLoading}
-						onClick={() => onRefresh(provider)}
-						size="sm"
-						variant="outline"
-					>
-						<ArrowsClockwiseIcon className="size-4" />
-						{isLoading
-							? "Checking..."
-							: isLmStudio
-								? "Test LM Studio"
-								: "Load models"}
-					</Button>
-				</div>
-			</div>
-			{status ? (
-				<p
-					className={
-						status.ok
-							? "mt-3 text-xs text-muted-foreground"
-							: "mt-3 text-xs text-destructive"
-					}
-				>
-					{status.ok ? "Connected" : "Unavailable"}: {status.message}
-				</p>
-			) : null}
-		</div>
-	);
-}
-
-type SetupBlockProps = {
-	title: string;
-	children: React.ReactNode;
-};
-
-function SetupBlock({ title, children }: SetupBlockProps) {
-	return (
-		<section>
-			<h2 className="mb-2 text-sm font-semibold">{title}</h2>
-			{children}
-		</section>
-	);
-}
-
-function createProfileId(name: string): string {
-	const slug = name
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-
-	return `${slug || "profile"}-${Date.now()}`;
-}
-
-function scopeLabel(scopeKind: ReviewProfileScopeKind): string {
-	switch (scopeKind) {
-		case "global":
-			return "Global";
-		case "repository":
-			return "Repository path";
-		case "folder":
-			return "Folder path";
-	}
 }
