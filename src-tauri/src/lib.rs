@@ -142,6 +142,11 @@ async fn run_review_session(
     let mut completed_passes = 0;
     let mut failed_passes = 0;
     let mut pass_index = 0;
+    let mut exploration_requests = 0;
+    let repository_tools_enabled = provider_settings
+        .mcp_sources
+        .iter()
+        .any(|source| source.id == "filesystem" && source.enabled);
     let total_passes = change_set
         .files
         .iter()
@@ -173,6 +178,7 @@ async fn run_review_session(
                     completed_passes,
                     total_passes,
                     failed_passes,
+                    exploration_requests,
                     Vec::new(),
                 );
                 break;
@@ -188,21 +194,29 @@ async fn run_review_session(
                 file.deletions
             );
             let mut pass_feedback = Vec::new();
-            match providers::run_review_pass(&provider, profile, &change_set, file, pass_index)
-                .await
+            match providers::run_review_pass(
+                &provider,
+                profile,
+                &change_set,
+                file,
+                pass_index,
+                repository_tools_enabled,
+            )
+            .await
             {
-                Ok(feedback_from_pass) => {
+                Ok(pass_result) => {
                     eprintln!(
                         "[local-review-pass] pass_ok review_id={} pass={} file={} profile={} feedback_count={}",
                         review_id,
                         pass_index + 1,
                         file.path,
                         profile.name,
-                        feedback_from_pass.len()
+                        pass_result.feedback.len()
                     );
                     completed_passes += 1;
-                    pass_feedback = feedback_from_pass.clone();
-                    feedback.extend(feedback_from_pass);
+                    exploration_requests += pass_result.exploration_requests;
+                    pass_feedback = pass_result.feedback.clone();
+                    feedback.extend(pass_result.feedback);
                 }
                 Err(error) => {
                     eprintln!(
@@ -224,6 +238,7 @@ async fn run_review_session(
                 completed_passes,
                 total_passes,
                 failed_passes,
+                exploration_requests,
                 pass_feedback,
             );
         }
@@ -271,7 +286,7 @@ async fn run_review_session(
             total_passes,
             changed_files: change_set.files.len() as u32,
             modified_lines,
-            exploration_requests: 0,
+            exploration_requests,
             guardrail_hits: failed_passes,
         },
         feedback,
@@ -303,6 +318,7 @@ fn emit_review_progress(
     completed_passes: u32,
     total_passes: u32,
     failed_passes: u32,
+    exploration_requests: u32,
     feedback: Vec<ReviewFeedback>,
 ) {
     let _ = app.emit(
@@ -315,7 +331,7 @@ fn emit_review_progress(
                 total_passes,
                 changed_files: 0,
                 modified_lines: 0,
-                exploration_requests: 0,
+                exploration_requests,
                 guardrail_hits: failed_passes,
             },
             feedback,

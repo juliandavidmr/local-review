@@ -349,7 +349,7 @@ pub fn default_profiles() -> Vec<ReviewProfileItem> {
                 "Edge cases".to_string(),
             ],
             file_globs: vec!["*".to_string()],
-            prompt: "Review behavior regressions, incorrect assumptions, missing validation, and unsafe state transitions.".to_string(),
+            prompt: "Review for concrete behavior regressions only. Name the failing scenario, the invariant or validation that changed, the user-visible or data-impacting consequence, and the smallest code change that would prevent it. Skip comments that cannot cite exact changed lines and supporting context.".to_string(),
         },
         ReviewProfileItem {
             id: "architecture".to_string(),
@@ -364,7 +364,7 @@ pub fn default_profiles() -> Vec<ReviewProfileItem> {
                 "Adapter isolation".to_string(),
             ],
             file_globs: vec!["*".to_string()],
-            prompt: "Review architecture boundaries, coupling, and adherence to documented domain language.".to_string(),
+            prompt: "Review architecture only when the diff crosses a documented boundary or makes a module harder to reason about. Cite the boundary, the dependency direction or domain term being violated, and the future change that becomes riskier. Skip broad design preferences without repository evidence.".to_string(),
         },
     ]
 }
