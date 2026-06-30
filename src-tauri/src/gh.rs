@@ -131,7 +131,14 @@ fn current_pull_request(repository_path: &str) -> Result<CurrentPullRequest, Str
 fn current_repository(repository_path: &str) -> Result<String, String> {
     let output = Command::new("gh")
         .current_dir(repository_path)
-        .args(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+        .args([
+            "repo",
+            "view",
+            "--json",
+            "nameWithOwner",
+            "-q",
+            ".nameWithOwner",
+        ])
         .output()
         .map_err(|error| format!("Could not run gh repo view: {error}"))?;
 

@@ -24,7 +24,17 @@ export type ChangeSetSnapshot = {
     path: string
     additions: number
     deletions: number
-    hunks: unknown[]
+    hunks: Array<{
+      id: string
+      oldStartLine: number
+      newStartLine: number
+      lines: Array<{
+        kind: "added" | "removed" | "context"
+        content: string
+        oldLineNumber?: number
+        newLineNumber?: number
+      }>
+    }>
     isGenerated: boolean
   }>
   createdAt: string

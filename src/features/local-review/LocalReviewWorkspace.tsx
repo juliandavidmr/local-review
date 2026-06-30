@@ -226,6 +226,7 @@ export function LocalReviewWorkspace() {
 				<SetupOverview session={session} />
 				<ExecutionStatus execution={session.execution} />
 				<FeedbackWorkspace
+					changeSet={session.changeSet}
 					feedback={session.feedback}
 					ghStatus={ghStatus}
 					isRunning={running}
@@ -293,10 +294,7 @@ export function LocalReviewWorkspace() {
 						feedback: current.feedback.filter((item) => item.id !== feedbackId),
 						publication: {
 							...current.publication,
-							totalComments: Math.max(
-								0,
-								current.publication.totalComments - 1,
-							),
+							totalComments: Math.max(0, current.publication.totalComments - 1),
 						},
 					}
 				: current,

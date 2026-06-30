@@ -23,9 +23,13 @@ import type {
 	ReviewFeedbackState,
 	ReviewSeverity,
 } from "@/domain/workspace-view";
-import type { GhCliStatus } from "@/adapters/tauri-local-review-api";
+import type {
+	ChangeSetSnapshot,
+	GhCliStatus,
+} from "@/adapters/tauri-local-review-api";
 
 type FeedbackWorkspaceProps = {
+	changeSet: ChangeSetSnapshot;
 	feedback: ReviewFeedbackItem[];
 	ghStatus: GhCliStatus | null;
 	isRunning?: boolean;
@@ -54,6 +58,7 @@ const severityOptions: Array<"all" | ReviewSeverity> = [
 ];
 
 export function FeedbackWorkspace({
+	changeSet,
 	feedback,
 	ghStatus,
 	isRunning = false,
@@ -156,6 +161,7 @@ export function FeedbackWorkspace({
 				<div className="space-y-4 bg-muted/40 p-4">
 					{filteredFeedback.map((item, index) => (
 						<FeedbackCard
+							changeSet={changeSet}
 							feedback={item}
 							ghStatus={ghStatus}
 							index={index + 1}
@@ -216,6 +222,7 @@ function FilterSelect<T extends string>({
 }
 
 type FeedbackCardProps = {
+	changeSet: ChangeSetSnapshot;
 	feedback: ReviewFeedbackItem;
 	ghStatus: GhCliStatus | null;
 	index: number;
@@ -226,6 +233,7 @@ type FeedbackCardProps = {
 };
 
 function FeedbackCard({
+	changeSet,
 	feedback,
 	ghStatus,
 	index,
@@ -253,7 +261,16 @@ function FeedbackCard({
 			: feedback.type !== "inline" || !(feedback.line || feedback.codeLocation)
 				? "Only inline feedback with a file and line can be published."
 				: "Publish this inline comment to the current pull request.";
-	const hasQuotedCode = Boolean(feedback.quotedCode?.trim());
+	const exactEvidence = getExactEvidence(changeSet, feedback);
+	const exactCodeContext = getExactCodeContext(changeSet, feedback);
+	const codeContext = exactCodeContext ?? feedback.quotedCode?.trim() ?? "";
+	const hasCodeContext = codeContext.length > 0;
+	const evidenceItems =
+		feedback.type === "inline" && exactEvidence
+			? [exactEvidence]
+			: feedback.type === "inline"
+				? []
+				: feedback.evidence;
 	const limitations = feedback.limitations.filter(
 		(item) => item.trim().length > 0,
 	);
@@ -285,7 +302,11 @@ function FeedbackCard({
 		return {
 			...feedback,
 			editableComment,
-			state: nextFeedbackStateForComment(feedback, editableComment, originalComment),
+			state: nextFeedbackStateForComment(
+				feedback,
+				editableComment,
+				originalComment,
+			),
 		};
 	}
 
@@ -351,21 +372,28 @@ function FeedbackCard({
 					</DetailBlock>
 
 					<DetailBlock title="Evidence">
-						<ul className="space-y-3">
-							{feedback.evidence.map((item) => (
-								<li key={item}>
-									<pre className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-5">
-										<code>{item}</code>
-									</pre>
-								</li>
-							))}
-						</ul>
+						{evidenceItems.length > 0 ? (
+							<ul className="space-y-3">
+								{evidenceItems.map((item) => (
+									<li key={item}>
+										<pre className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-5">
+											<code>{item}</code>
+										</pre>
+									</li>
+								))}
+							</ul>
+						) : (
+							<p className="text-sm text-muted-foreground">
+								No exact changed-line evidence is available for this saved
+								finding.
+							</p>
+						)}
 					</DetailBlock>
 
-					{hasQuotedCode ? (
+					{hasCodeContext ? (
 						<DetailBlock title="Code context">
 							<pre className="overflow-x-auto border border-border bg-muted p-3 text-xs leading-5">
-								<code>{feedback.quotedCode}</code>
+								<code>{codeContext}</code>
 							</pre>
 						</DetailBlock>
 					) : null}
@@ -427,6 +455,74 @@ function nextFeedbackStateForComment(
 	if (nextComment !== originalComment) return "edited";
 	if (feedback.state === "edited") return "draft";
 	return feedback.state;
+}
+
+function getExactEvidence(
+	changeSet: ChangeSetSnapshot,
+	feedback: ReviewFeedbackItem,
+): string | null {
+	if (feedback.type !== "inline") return null;
+
+	const filePath = feedback.codeLocation?.filePath ?? feedback.file;
+	const startLine = feedback.codeLocation?.startLine ?? feedback.line;
+	const endLine = feedback.codeLocation?.endLine ?? startLine;
+	const side = feedback.codeLocation?.side ?? "new";
+	if (!startLine || !endLine) return null;
+
+	const code = getChangedLineRange(
+		changeSet,
+		filePath,
+		startLine,
+		endLine,
+		side,
+	);
+	if (!code) return null;
+
+	const lineLabel =
+		startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`;
+	return `${filePath}:${lineLabel}\n${code}`;
+}
+
+function getExactCodeContext(
+	changeSet: ChangeSetSnapshot,
+	feedback: ReviewFeedbackItem,
+): string | null {
+	if (feedback.type !== "inline") return null;
+
+	const filePath = feedback.codeLocation?.filePath ?? feedback.file;
+	const startLine = feedback.codeLocation?.startLine ?? feedback.line;
+	const endLine = feedback.codeLocation?.endLine ?? startLine;
+	const side = feedback.codeLocation?.side ?? "new";
+	if (!startLine || !endLine) return null;
+
+	return getChangedLineRange(changeSet, filePath, startLine, endLine, side);
+}
+
+function getChangedLineRange(
+	changeSet: ChangeSetSnapshot,
+	filePath: string,
+	startLine: number,
+	endLine: number,
+	side: string,
+): string | null {
+	const file = changeSet.files.find((candidate) => candidate.path === filePath);
+	if (!file || startLine > endLine) return null;
+
+	const lines: string[] = [];
+	for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+		const line = file.hunks
+			.flatMap((hunk) => hunk.lines)
+			.find((candidate) =>
+				side === "old"
+					? candidate.oldLineNumber === lineNumber
+					: candidate.newLineNumber === lineNumber,
+			);
+
+		if (!line) return null;
+		lines.push(line.content);
+	}
+
+	return lines.join("\n");
 }
 
 type DetailBlockProps = {

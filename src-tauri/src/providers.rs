@@ -36,7 +36,6 @@ struct AgentFeedbackOutput {
 struct AgentFeedbackItem {
     #[serde(default)]
     title: String,
-    feedback_type: Option<String>,
     #[serde(default = "default_feedback_severity")]
     severity: String,
     file: Option<String>,
@@ -306,7 +305,10 @@ fn feedback_from_agent_item(
     created_at: &str,
     index: usize,
 ) -> ReviewFeedback {
-    let requested_file = item.file.unwrap_or_else(|| file.path.clone());
+    let requested_file = item
+        .file
+        .filter(|candidate| candidate == &file.path)
+        .unwrap_or_else(|| file.path.clone());
     let body = first_non_empty(&[item.body, item.message])
         .unwrap_or_else(|| "The model returned feedback without a body.".to_string());
     let title = if item.title.trim().is_empty() {
@@ -328,16 +330,30 @@ fn feedback_from_agent_item(
         });
     let feedback_type = if location.is_some() {
         FeedbackType::Inline
-    } else if item.feedback_type.as_deref() == Some("inline") {
-        FeedbackType::Inline
     } else {
         FeedbackType::Summary
     };
-    let evidence = if item.evidence.is_empty() {
-        vec![format!("{} changed in current change set.", file.path)]
-    } else {
-        item.evidence
-    };
+    let quoted_code = location
+        .as_ref()
+        .and_then(|value| get_line_content(file, value.start_line))
+        .or(item.quoted_code);
+    let evidence = location
+        .as_ref()
+        .and_then(|value| {
+            quoted_code.as_ref().map(|code| {
+                vec![format!(
+                    "{}:{}\n{}",
+                    value.file_path, value.start_line, code
+                )]
+            })
+        })
+        .unwrap_or_else(|| {
+            if item.evidence.is_empty() {
+                vec![format!("{} changed in current change set.", file.path)]
+            } else {
+                item.evidence
+            }
+        });
     let limited_context = item.limitations.iter().any(|value| {
         value.to_lowercase().contains("limited") || value.to_lowercase().contains("not inspect")
     });
@@ -358,7 +374,7 @@ fn feedback_from_agent_item(
         suggested_action,
         confidence: item.confidence.unwrap_or_else(|| "medium".to_string()),
         limited_context,
-        quoted_code: item.quoted_code,
+        quoted_code,
         evidence,
         limitations: item.limitations,
         code_location: location,
@@ -406,4 +422,12 @@ fn line_exists_in_file(file: &ChangedFile, line: u32) -> bool {
             .iter()
             .any(|candidate| candidate.new_line_number == Some(line))
     })
+}
+
+fn get_line_content(file: &ChangedFile, line: u32) -> Option<String> {
+    file.hunks
+        .iter()
+        .flat_map(|hunk| hunk.lines.iter())
+        .find(|candidate| candidate.new_line_number == Some(line))
+        .map(|candidate| candidate.content.clone())
 }
