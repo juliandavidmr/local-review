@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowCounterClockwise, StopCircle } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, StopCircle } from "@phosphor-icons/react";
 import {
 	buildChangeSet,
 	cancelReviewSession,
@@ -213,12 +213,11 @@ export function LocalReviewWorkspace() {
 						onClick={() => setSession(null)}
 						variant="outline"
 					>
-						<ArrowCounterClockwise className="size-4" />
+						<ArrowCounterClockwiseIcon className="size-4" />
 						New review
 					</Button>
 				</>
 			}
-			subtitle="Open a repository, review a change set, curate generated feedback, and publish through gh."
 			title="Review Workspace"
 		>
 			<div className="space-y-5">

@@ -7,6 +7,8 @@ use crate::domain::{
 use super::context::ModelPromptBudget;
 use super::tools::{is_sensitive_path, safe_repository_file, ReviewToolError};
 
+const MAX_PROFILE_PROMPT_CHARS: usize = 1_600;
+
 pub(super) fn review_prompt(
     profile: &ReviewProfileItem,
     change_set: &ChangeSetSnapshot,
@@ -19,12 +21,13 @@ pub(super) fn review_prompt(
     } else {
         "- Repository exploration tools are disabled for this pass; return limitations instead of guessing about callers, definitions, tests, configuration, or behavior outside the visible hunk."
     };
+    let profile_prompt = trim_profile_prompt(&profile.prompt);
 
     let prompt = format!(
-        "Review one file from a Local Review session.\n\nProfile: {}\nCriteria: {}\nProfile prompt: {}\nRepository: {}\nFile: {}\nAdditions: {}\nDeletions: {}\n\nReview standard:\n- Produce only comments that would be credible in a human code review.\n- Each comment must identify a concrete defect, regression risk, missing invariant, unsafe edge case, or architecture boundary violation.\n- Each comment must explain the affected scenario and why the changed code creates the risk.\n- Each comment must include exact evidence from the changed code and, when needed, repository context gathered with tools.\n{}\n- Return no feedback for generic maintainability advice, speculative concerns, style preferences, or comments that only say to add tests without naming the missing behavior.\n- Return no feedback when the only concern is to verify that a dependency, import, enum, map, constant, or configuration remains complete/correct; first inspect it and name the exact missing or wrong entry.\n- Treat limitations as reasons not to comment. Do not turn uncertainty such as \"could be incomplete\", \"import path must be correct\", or \"verify this list\" into review feedback.\n- Do not invent files, tests, commands, product requirements, or repository conventions.\n- Inline feedback must use a changed new-line number or changed new-line range from the hunk.\n- The body must be self-contained and publication-ready because it is what may be posted to GitHub.\n- Return only JSON. Do not wrap it in markdown fences.\n\nEach feedback item must include these keys:\n- title: short specific string\n- severity: one of blocking, important, suggestion, question, nitpick\n- line: changed new-line number for single-line inline feedback\n- startLine: changed new-line number for the first line of a multi-line range, optional when line is present\n- endLine: changed new-line number for the last line of a multi-line range, optional when line is present\n- body: 2-5 sentence complete review comment with the issue, impact, and fix direction\n- suggestedAction: concrete action the author can take\n- confidence: high, medium, or low\n- evidence: array of specific evidence strings, including file:line references or tool-derived observations\n- limitations: array of specific limitations, empty array if none\n\nExample response:\n{{\"feedback\":[{{\"title\":\"Preserve validation before saving settings\",\"severity\":\"important\",\"line\":42,\"body\":\"This path now writes the provider settings before checking whether a selected model exists. If the model probe fails, the app can persist an unusable provider configuration and later review sessions will fail before they start. Keep the validation before the write, or roll back the saved settings when the probe returns no model.\",\"suggestedAction\":\"Move the selected-model validation before persistence, or make the save transactional so invalid provider settings are not stored.\",\"confidence\":\"high\",\"evidence\":[\"src-tauri/src/store.rs:42 saves settings before provider validation\",\"The changed branch handles probe errors after persistence\"],\"limitations\":[]}}]}}\n\nChanged hunks:\n{}\n\nExpanded current-file context around the changed hunks:\n{}\n\nReturn JSON now.",
+        "Review one file from a Local Review session.\n\nProfile: {}\nCriteria: {}\nProfile prompt: {}\nRepository: {}\nFile: {}\nAdditions: {}\nDeletions: {}\n\nReview standard:\n- Produce only comments that would be credible in a human code review.\n- Each comment must identify a concrete defect, regression risk, missing invariant, unsafe edge case, or architecture boundary violation.\n- Each comment must explain the affected scenario and why the changed code creates the risk.\n- Each comment must include exact evidence from the changed code and, when needed, repository context gathered with tools.\n{}\n- Return no feedback for generic maintainability advice, speculative concerns, style preferences, or comments that only say to add tests without naming the missing behavior.\n- Return no feedback when the only concern is to verify that a dependency, import, enum, map, constant, or configuration remains complete/correct; first inspect it and name the exact missing or wrong entry.\n- Treat limitations as reasons not to comment. Do not turn uncertainty such as \"could be incomplete\", \"import path must be correct\", or \"verify this list\" into review feedback.\n- Do not invent files, tests, commands, product requirements, or repository conventions.\n- Inline feedback must use an added new-line number or a range that includes at least one added new-line from the hunk. Context lines are evidence only, not review targets.\n- The body must be self-contained and publication-ready because it is what may be posted to GitHub.\n- Return only JSON. Do not wrap it in markdown fences.\n\nEach feedback item must include these keys:\n- title: short specific string\n- severity: one of blocking, important, suggestion, question, nitpick\n- line: added new-line number for single-line inline feedback\n- startLine: added new-line number for the first line of a multi-line range, optional when line is present\n- endLine: changed new-line number for the last line of a multi-line range, optional when line is present\n- body: 2-5 sentence complete review comment with the issue, impact, and fix direction\n- suggestedAction: concrete action the author can take\n- confidence: high, medium, or low\n- evidence: array of specific evidence strings, including file:line references or tool-derived observations\n- limitations: array of specific limitations, empty array if none\n\nExample response:\n{{\"feedback\":[{{\"title\":\"Preserve validation before saving settings\",\"severity\":\"important\",\"line\":42,\"body\":\"This path now writes the provider settings before checking whether a selected model exists. If the model probe fails, the app can persist an unusable provider configuration and later review sessions will fail before they start. Keep the validation before the write, or roll back the saved settings when the probe returns no model.\",\"suggestedAction\":\"Move the selected-model validation before persistence, or make the save transactional so invalid provider settings are not stored.\",\"confidence\":\"high\",\"evidence\":[\"src-tauri/src/store.rs:42 saves settings before provider validation\",\"The changed branch handles probe errors after persistence\"],\"limitations\":[]}}]}}\n\nChanged hunks:\n{}\n\nExpanded current-file context around the changed hunks:\n{}\n\nReturn JSON now.",
         profile.name,
         profile.criteria.join(", "),
-        profile.prompt,
+        profile_prompt,
         change_set.repository_path,
         file.path,
         file.additions,
@@ -39,6 +42,10 @@ pub(super) fn review_prompt(
     );
 
     enforce_prompt_budget(prompt, budget.max_prompt_chars)
+}
+
+fn trim_profile_prompt(prompt: &str) -> String {
+    trim_to_char_budget(prompt.trim().to_string(), MAX_PROFILE_PROMPT_CHARS)
 }
 
 pub(super) fn repository_grounding_prompt(
@@ -74,13 +81,20 @@ fn render_hunks(file: &ChangedFile) -> String {
                 .lines
                 .iter()
                 .map(|line| {
-                    let prefix = match line.kind {
-                        ChangeLineKind::Added => "+",
-                        ChangeLineKind::Removed => "-",
-                        ChangeLineKind::Context => " ",
+                    let kind = match line.kind {
+                        ChangeLineKind::Added => "ADDED",
+                        ChangeLineKind::Removed => "REMOVED",
+                        ChangeLineKind::Context => "CONTEXT",
                     };
-                    let number = line.new_line_number.or(line.old_line_number).unwrap_or(0);
-                    format!("{prefix}{number}: {}", line.content)
+                    let old_line = line
+                        .old_line_number
+                        .map(|number| number.to_string())
+                        .unwrap_or_else(|| "-".to_string());
+                    let new_line = line
+                        .new_line_number
+                        .map(|number| number.to_string())
+                        .unwrap_or_else(|| "-".to_string());
+                    format!("{kind} old:{old_line} new:{new_line} | {}", line.content)
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -196,7 +210,9 @@ fn trim_to_char_budget(value: String, max_chars: usize) -> String {
 
     let keep = max_chars.saturating_sub(80);
     let mut trimmed = value.chars().take(keep).collect::<String>();
-    trimmed.push_str("\n...omitted to fit model context...");
+    trimmed.push_str(
+        "\n...content omitted to fit model context; do not make claims about omitted lines...",
+    );
     trimmed
 }
 
@@ -253,4 +269,65 @@ fn read_git_object(
     }
 
     String::from_utf8(output.stdout).map_err(|_| ReviewToolError::ReadFailed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{render_hunks, trim_profile_prompt, MAX_PROFILE_PROMPT_CHARS};
+    use crate::domain::{ChangeHunk, ChangeLine, ChangeLineKind, ChangedFile, ChangedFileStatus};
+
+    #[test]
+    fn render_hunks_labels_line_kind_without_diff_prefix_ambiguity() {
+        let rendered = render_hunks(&ChangedFile {
+            path: "src/example.ts".to_string(),
+            previous_path: None,
+            status: ChangedFileStatus::Modified,
+            additions: 1,
+            deletions: 1,
+            is_generated: false,
+            hunks: vec![ChangeHunk {
+                id: "hunk-7-7".to_string(),
+                old_start_line: 7,
+                new_start_line: 7,
+                lines: vec![
+                    ChangeLine {
+                        kind: ChangeLineKind::Context,
+                        content:
+                            "import { validateFileHealth } from './utils/validate-file-health';"
+                                .to_string(),
+                        old_line_number: Some(7),
+                        new_line_number: Some(7),
+                    },
+                    ChangeLine {
+                        kind: ChangeLineKind::Removed,
+                        content: "const status = oldStatus;".to_string(),
+                        old_line_number: Some(8),
+                        new_line_number: None,
+                    },
+                    ChangeLine {
+                        kind: ChangeLineKind::Added,
+                        content: "const status = nextStatus;".to_string(),
+                        old_line_number: None,
+                        new_line_number: Some(8),
+                    },
+                ],
+            }],
+        });
+
+        assert!(rendered.contains(
+            "CONTEXT old:7 new:7 | import { validateFileHealth } from './utils/validate-file-health';"
+        ));
+        assert!(rendered.contains("REMOVED old:8 new:- | const status = oldStatus;"));
+        assert!(rendered.contains("ADDED old:- new:8 | const status = nextStatus;"));
+        assert!(!rendered.contains("+7:"));
+    }
+
+    #[test]
+    fn trim_profile_prompt_limits_manual_context() {
+        let prompt = "a".repeat(MAX_PROFILE_PROMPT_CHARS + 500);
+        let trimmed = trim_profile_prompt(&prompt);
+
+        assert!(trimmed.len() <= MAX_PROFILE_PROMPT_CHARS);
+        assert!(trimmed.contains("content omitted to fit model context"));
+    }
 }

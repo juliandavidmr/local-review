@@ -4,8 +4,10 @@ use crate::domain::{LocalModelProviderKind, ModelProviderSettings};
 
 const FALLBACK_CONTEXT_TOKENS: u32 = 6_144;
 const OUTPUT_RESERVE_TOKENS: u32 = 1_024;
-const TOOL_SCHEMA_RESERVE_TOKENS: u32 = 900;
-const CHARS_PER_TOKEN_ESTIMATE: u32 = 3;
+const TOOL_SCHEMA_RESERVE_TOKENS: u32 = 1_400;
+const STATIC_PROMPT_RESERVE_TOKENS: u32 = 700;
+const CHARS_PER_TOKEN_ESTIMATE: u32 = 2;
+const USABLE_CONTEXT_PERCENT: u32 = 75;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModelPromptBudget {
@@ -22,18 +24,29 @@ pub(crate) async fn model_prompt_budget(
         .await
         .unwrap_or(FALLBACK_CONTEXT_TOKENS)
         .max(2_048);
+    ModelPromptBudget {
+        context_tokens,
+        max_prompt_chars: prompt_char_budget(context_tokens, tools_enabled),
+    }
+}
+
+fn prompt_char_budget(context_tokens: u32, tools_enabled: bool) -> usize {
+    let usable_context_tokens = context_tokens
+        .saturating_mul(USABLE_CONTEXT_PERCENT)
+        .saturating_div(100);
     let reserved_tokens = OUTPUT_RESERVE_TOKENS
+        + STATIC_PROMPT_RESERVE_TOKENS
         + if tools_enabled {
             TOOL_SCHEMA_RESERVE_TOKENS
         } else {
             0
         };
-    let prompt_tokens = context_tokens.saturating_sub(reserved_tokens).max(1_024);
+    let prompt_tokens = usable_context_tokens
+        .saturating_sub(reserved_tokens)
+        .max(768)
+        .min(usable_context_tokens);
 
-    ModelPromptBudget {
-        context_tokens,
-        max_prompt_chars: prompt_tokens.saturating_mul(CHARS_PER_TOKEN_ESTIMATE) as usize,
-    }
+    prompt_tokens.saturating_mul(CHARS_PER_TOKEN_ESTIMATE) as usize
 }
 
 async fn detect_context_tokens(provider: &ModelProviderSettings, model_id: &str) -> Option<u32> {
@@ -169,7 +182,7 @@ fn valid_context_value(value: u64) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_tokens_from_value, find_model_metadata};
+    use super::{context_tokens_from_value, find_model_metadata, prompt_char_budget};
     use serde_json::json;
 
     #[test]
@@ -194,5 +207,14 @@ mod tests {
         });
 
         assert_eq!(context_tokens_from_value(&value), Some(4096));
+    }
+
+    #[test]
+    fn prompt_budget_is_more_conservative_when_tools_are_enabled() {
+        let without_tools = prompt_char_budget(8_192, false);
+        let with_tools = prompt_char_budget(8_192, true);
+
+        assert!(with_tools < without_tools);
+        assert!(with_tools <= 5_000);
     }
 }

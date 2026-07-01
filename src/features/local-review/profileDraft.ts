@@ -9,6 +9,8 @@ export type ProfileDraft = {
 	scopeKind: ReviewProfileScopeKind;
 };
 
+export const MAX_PROFILE_PROMPT_CHARS = 1_600;
+
 export const emptyProfileDraft: ProfileDraft = {
 	name: "",
 	prompt: "",
@@ -17,7 +19,7 @@ export const emptyProfileDraft: ProfileDraft = {
 
 export function createReviewProfile(draft: ProfileDraft): ReviewProfileItem {
 	const name = draft.name.trim();
-	const prompt = draft.prompt.trim();
+	const prompt = normalizeProfilePrompt(draft.prompt);
 
 	return {
 		id: createProfileId(name),
@@ -53,8 +55,12 @@ export function updateReviewProfile(
 		scopeKind: draft.scopeKind,
 		enabledByDefault: draft.scopeKind === "global",
 		criteria: [name],
-		prompt: draft.prompt.trim(),
+		prompt: normalizeProfilePrompt(draft.prompt),
 	};
+}
+
+export function normalizeProfilePrompt(prompt: string): string {
+	return prompt.trim().slice(0, MAX_PROFILE_PROMPT_CHARS);
 }
 
 export function scopeLabel(scopeKind: ReviewProfileScopeKind): string {

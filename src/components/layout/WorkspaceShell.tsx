@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 type WorkspaceShellProps = {
 	title: string;
-	subtitle: string;
+	subtitle?: string;
 	actions?: ReactNode;
 	children: ReactNode;
 };
@@ -22,7 +22,9 @@ export function WorkspaceShell({
 							Local Review
 						</p>
 						<h1 className="mt-1 text-xl font-semibold">{title}</h1>
-						<p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+						{subtitle && (
+							<p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+						)}
 					</div>
 					{actions ? (
 						<div className="flex shrink-0 items-center gap-2">{actions}</div>

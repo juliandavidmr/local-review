@@ -199,6 +199,35 @@ mod tests {
     }
 
     #[test]
+    fn rejects_inline_feedback_that_targets_context_only_lines() {
+        let item = AgentFeedbackItem {
+            title: "Remove extra import brace".to_string(),
+            severity: "important".to_string(),
+            file: None,
+            line: Some(8),
+            start_line: None,
+            end_line: None,
+            body: "The import statement has an extra curly brace before validateFileHealth, which would cause TypeScript parsing to fail before the file can compile. The cited code does not show a changed implementation path, so this should not be published as review feedback on an unchanged context line.".to_string(),
+            message: String::new(),
+            suggested_action:
+                "Remove the extra brace from the import statement before running the TypeScript compiler again."
+                    .to_string(),
+            confidence: Some("high".to_string()),
+            evidence: vec![
+                "src/example.rs:8 import { validateFileHealth } from './utils/validate-file-health';"
+                    .to_string(),
+            ],
+            limitations: vec![],
+            quoted_code: None,
+        };
+
+        assert_eq!(
+            agent_item_quality_issue(&item, &changed_file()),
+            Some("invalid_changed_line_range".to_string())
+        );
+    }
+
+    #[test]
     fn accepts_specific_multiline_feedback_and_preserves_publishable_comment() {
         let provider = ModelProviderSettings {
             id: "lm-studio".to_string(),

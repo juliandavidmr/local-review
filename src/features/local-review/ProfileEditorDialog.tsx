@@ -21,7 +21,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import type { ReviewProfileScopeKind } from "@/domain/workspace-view";
 
-import { emptyProfileDraft, type ProfileDraft } from "./profileDraft";
+import {
+	emptyProfileDraft,
+	MAX_PROFILE_PROMPT_CHARS,
+	type ProfileDraft,
+} from "./profileDraft";
 
 type ProfileEditorDialogProps = {
 	draft?: ProfileDraft;
@@ -41,9 +45,11 @@ export function ProfileEditorDialog({
 	const [currentDraft, setCurrentDraft] = useState<ProfileDraft>(
 		draft ?? emptyProfileDraft,
 	);
+	const promptLength = currentDraft.prompt.trim().length;
 	const canSubmit =
 		currentDraft.name.trim().length > 0 &&
-		currentDraft.prompt.trim().length > 0;
+		promptLength > 0 &&
+		promptLength <= MAX_PROFILE_PROMPT_CHARS;
 
 	useEffect(() => {
 		if (!open) return;
@@ -114,6 +120,7 @@ export function ProfileEditorDialog({
 						<Textarea
 							className="min-h-32"
 							id="profile-prompt"
+							maxLength={MAX_PROFILE_PROMPT_CHARS}
 							onChange={(event) =>
 								setCurrentDraft((current) => ({
 									...current,
@@ -123,6 +130,9 @@ export function ProfileEditorDialog({
 							placeholder="Review for..."
 							value={currentDraft.prompt}
 						/>
+						<div className="text-right text-xs text-muted-foreground">
+							{promptLength}/{MAX_PROFILE_PROMPT_CHARS}
+						</div>
 					</div>
 
 					<DialogFooter>

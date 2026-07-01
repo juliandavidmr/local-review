@@ -84,7 +84,9 @@ pub(super) fn code_location_from_agent_item(
     if start_line == 0 || end_line < start_line {
         return None;
     }
-    if !range_exists_in_file(file, start_line, end_line) {
+    if !range_exists_in_file(file, start_line, end_line)
+        || !range_includes_added_line(file, start_line, end_line)
+    {
         return None;
     }
 
@@ -160,6 +162,18 @@ fn range_exists_in_file(file: &ChangedFile, start_line: u32, end_line: u32) -> b
             hunk.lines
                 .iter()
                 .any(|candidate| candidate.new_line_number == Some(line))
+        })
+    })
+}
+
+fn range_includes_added_line(file: &ChangedFile, start_line: u32, end_line: u32) -> bool {
+    file.hunks.iter().any(|hunk| {
+        hunk.lines.iter().any(|candidate| {
+            matches!(candidate.kind, crate::domain::ChangeLineKind::Added)
+                && candidate
+                    .new_line_number
+                    .map(|line| (start_line..=end_line).contains(&line))
+                    .unwrap_or(false)
         })
     })
 }
