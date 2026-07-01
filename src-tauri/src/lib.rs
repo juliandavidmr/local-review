@@ -18,6 +18,11 @@ fn open_repository(repository_path: String) -> Result<RepositoryDescriptor, Stri
 }
 
 #[tauri::command]
+fn list_repository_branches(repository_path: String) -> Result<Vec<String>, String> {
+    git::list_repository_branches(&repository_path)
+}
+
+#[tauri::command]
 fn build_change_set(source: ChangeSource) -> Result<ChangeSetSnapshot, String> {
     git::build_change_set(source)
 }
@@ -138,6 +143,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             open_repository,
+            list_repository_branches,
             build_change_set,
             load_profiles,
             save_profile,

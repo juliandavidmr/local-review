@@ -4,4 +4,4 @@ mod parser;
 mod repository;
 
 pub use change_set::build_change_set;
-pub use repository::open_repository;
+pub use repository::{list_repository_branches, open_repository};
