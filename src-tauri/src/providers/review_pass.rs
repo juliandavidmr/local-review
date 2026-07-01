@@ -27,11 +27,14 @@ pub(crate) async fn run_review_pass(
         .ok_or_else(|| "No model selected.".to_string())?;
     let base_url = openai_base_url(provider);
     let prompt_budget = model_prompt_budget(provider, &model, repository_tools_enabled).await;
+    let structured_output_enabled = structured_output_enabled(provider);
     eprintln!(
-        "[local-review-pass] prompt_budget file={} profile={} model={} context_tokens={} max_prompt_chars={}",
+        "[local-review-pass] prompt_budget file={} profile={} model={} tools_enabled={} structured_output={} context_tokens={} max_prompt_chars={}",
         file.path,
         profile.name,
         model,
+        repository_tools_enabled,
+        structured_output_enabled,
         prompt_budget.context_tokens,
         prompt_budget.max_prompt_chars
     );
@@ -42,7 +45,6 @@ pub(crate) async fn run_review_pass(
         repository_tools_enabled,
         prompt_budget,
     );
-    let structured_output_enabled = structured_output_enabled(provider);
     let (mut parsed, mut exploration_requests, mut raw_response) = run_review_agent_and_parse(
         &base_url,
         &model,
@@ -96,12 +98,14 @@ pub(crate) async fn run_review_pass(
     let pass_id = format!("pass-{}-{}", profile.id, pass_index + 1);
     let created_at = now_iso();
 
+    let used_repository_exploration = exploration_requests > 0;
     let feedback = parsed
         .feedback
         .into_iter()
         .enumerate()
         .filter_map(|(index, item)| {
-            if let Some(reason) = agent_item_quality_issue(&item, file) {
+            if let Some(reason) = agent_item_quality_issue(&item, file, used_repository_exploration)
+            {
                 eprintln!(
                     "[local-review-pass] feedback_rejected file={} profile={} reason={}",
                     file.path, profile.name, reason
@@ -117,7 +121,7 @@ pub(crate) async fn run_review_pass(
                     &pass_id,
                     &created_at,
                     index,
-                    exploration_requests > 0,
+                    used_repository_exploration,
                 ))
             }
         })

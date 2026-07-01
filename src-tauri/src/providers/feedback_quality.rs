@@ -8,6 +8,7 @@ use super::{
 pub(super) fn agent_item_quality_issue(
     item: &AgentFeedbackItem,
     file: &ChangedFile,
+    used_repository_exploration: bool,
 ) -> Option<String> {
     let Some(body) = first_non_empty(&[item.body.clone(), item.message.clone()]) else {
         return Some("missing_body".to_string());
@@ -29,6 +30,9 @@ pub(super) fn agent_item_quality_issue(
     if looks_like_verification_task_without_defect_evidence(item, &body, action) {
         return Some("verification_task_without_defect_evidence".to_string());
     }
+    if !used_repository_exploration && feedback_requires_repository_exploration(item) {
+        return Some("repository_exploration_required".to_string());
+    }
     if item
         .limitations
         .iter()
@@ -36,9 +40,17 @@ pub(super) fn agent_item_quality_issue(
     {
         return Some("model_reports_insufficient_context".to_string());
     }
-    if (item.line.is_some() || item.start_line.is_some() || item.end_line.is_some())
-        && code_location_from_agent_item(item, file, &file.path).is_none()
+    if item
+        .file
+        .as_ref()
+        .is_some_and(|requested_file| requested_file != &file.path)
     {
+        return Some("feedback_for_different_file".to_string());
+    }
+    if item.line.is_none() && item.start_line.is_none() {
+        return Some("missing_changed_line_range".to_string());
+    }
+    if code_location_from_agent_item(item, file, &file.path).is_none() {
         return Some("invalid_changed_line_range".to_string());
     }
 
@@ -47,9 +59,10 @@ pub(super) fn agent_item_quality_issue(
 
 pub(super) fn feedback_requires_repository_exploration(item: &AgentFeedbackItem) -> bool {
     let body = first_non_empty(&[item.body.clone(), item.message.clone()]).unwrap_or_default();
-    let combined = verification_context(item, &body, &item.suggested_action);
+    let combined = repository_claim_context(item, &body, &item.suggested_action);
 
     mentions_external_review_target(&combined)
+        || claims_external_symbol_is_missing(&combined)
         || item
             .limitations
             .iter()
@@ -79,15 +92,16 @@ fn looks_like_verification_task_without_defect_evidence(
     body: &str,
     action: &str,
 ) -> bool {
-    let combined = verification_context(item, body, action);
+    let combined = repository_claim_context(item, body, action);
     let asks_for_verification = mentions_external_review_target(&combined);
 
     asks_for_verification && !evidence_names_actual_defect(&item.evidence)
 }
 
-fn verification_context(item: &AgentFeedbackItem, body: &str, action: &str) -> String {
+fn repository_claim_context(item: &AgentFeedbackItem, body: &str, action: &str) -> String {
     std::iter::once(body)
         .chain(std::iter::once(action))
+        .chain(item.evidence.iter().map(String::as_str))
         .chain(item.limitations.iter().map(String::as_str))
         .collect::<Vec<_>>()
         .join("\n")
@@ -110,6 +124,55 @@ fn mentions_external_review_target(value: &str) -> bool {
         || value.contains("imported symbol")
         || value.contains("external constant")
         || value.contains("configuration remains")
+}
+
+fn claims_external_symbol_is_missing(value: &str) -> bool {
+    let mentions_symbol = [
+        "constant",
+        "function",
+        "helper",
+        "symbol",
+        "import",
+        "export",
+        "identifier",
+        "type",
+        "enum",
+        "method",
+        "definition",
+        "dependency",
+    ]
+    .iter()
+    .any(|word| value.contains(word));
+
+    mentions_symbol
+        && [
+            "does not exist",
+            "doesn't exist",
+            "not exist",
+            "is missing",
+            "missing from",
+            "missing import",
+            "not imported",
+            "not exported",
+            "does not export",
+            "doesn't export",
+            "not defined",
+            "undefined",
+            "unresolved",
+            "cannot resolve",
+            "can't resolve",
+            "cannot find",
+            "can't find",
+            "not found",
+            "not in scope",
+            "unknown identifier",
+            "no helper",
+            "no function",
+            "no import",
+            "no matching",
+        ]
+        .iter()
+        .any(|phrase| value.contains(phrase))
 }
 
 fn evidence_names_actual_defect(evidence: &[String]) -> bool {
@@ -163,7 +226,7 @@ mod tests {
         };
 
         assert_eq!(
-            agent_item_quality_issue(&item, &changed_file()),
+            agent_item_quality_issue(&item, &changed_file(), false),
             Some("generic_review_text".to_string())
         );
     }
@@ -193,7 +256,7 @@ mod tests {
 
         assert!(feedback_requires_repository_exploration(&item));
         assert_eq!(
-            agent_item_quality_issue(&item, &changed_file()),
+            agent_item_quality_issue(&item, &changed_file(), false),
             Some("verification_task_without_defect_evidence".to_string())
         );
     }
@@ -222,8 +285,120 @@ mod tests {
         };
 
         assert_eq!(
-            agent_item_quality_issue(&item, &changed_file()),
+            agent_item_quality_issue(&item, &changed_file(), false),
             Some("invalid_changed_line_range".to_string())
+        );
+    }
+
+    #[test]
+    fn requires_repository_exploration_before_claiming_symbol_is_missing() {
+        let item = AgentFeedbackItem {
+            title: "Do not call an undefined helper".to_string(),
+            severity: "important".to_string(),
+            file: None,
+            line: Some(10),
+            start_line: None,
+            end_line: None,
+            body: "The changed line now calls buildUploadStatus, but that helper function is not defined in the visible diff. If the function does not exist in the repository, this file will fail to compile as soon as this path is built.".to_string(),
+            message: String::new(),
+            suggested_action:
+                "Inspect the repository for buildUploadStatus before commenting, and only report a defect if the helper is actually missing."
+                    .to_string(),
+            confidence: Some("medium".to_string()),
+            evidence: vec![
+                "src/example.rs:10 calls buildUploadStatus from the added line.".to_string(),
+            ],
+            limitations: vec![],
+            quoted_code: None,
+        };
+
+        assert!(feedback_requires_repository_exploration(&item));
+        assert_eq!(
+            agent_item_quality_issue(&item, &changed_file(), false),
+            Some("repository_exploration_required".to_string())
+        );
+    }
+
+    #[test]
+    fn accepts_missing_symbol_feedback_after_repository_exploration() {
+        let item = AgentFeedbackItem {
+            title: "Do not call an undefined helper".to_string(),
+            severity: "important".to_string(),
+            file: None,
+            line: Some(10),
+            start_line: None,
+            end_line: None,
+            body: "The changed line now calls buildUploadStatus, but repository search shows no helper function with that name and no import that would bring it into scope. That means this path can fail compilation when the changed file is built, instead of producing the intended upload status.".to_string(),
+            message: String::new(),
+            suggested_action:
+                "Add or import buildUploadStatus, or replace the call with the existing helper that produces the upload status."
+                    .to_string(),
+            confidence: Some("high".to_string()),
+            evidence: vec![
+                "src/example.rs:10 calls buildUploadStatus from the added line.".to_string(),
+                "search_repository buildUploadStatus returned no matching helper definition.".to_string(),
+            ],
+            limitations: vec![],
+            quoted_code: None,
+        };
+
+        assert!(feedback_requires_repository_exploration(&item));
+        assert_eq!(agent_item_quality_issue(&item, &changed_file(), true), None);
+    }
+
+    #[test]
+    fn rejects_feedback_for_a_different_file_after_repository_exploration() {
+        let item = AgentFeedbackItem {
+            title: "Fix unrelated helper".to_string(),
+            severity: "important".to_string(),
+            file: Some("src/unrelated.rs".to_string()),
+            line: Some(10),
+            start_line: None,
+            end_line: None,
+            body: "Repository exploration found a helper in another file that appears to return success before validation. That file is not the file currently being reviewed, so this would publish feedback against code outside the selected changed hunk and confuse the author reviewing this branch.".to_string(),
+            message: String::new(),
+            suggested_action:
+                "Anchor this finding to the changed file, or discard it when the changed hunk does not introduce the defect."
+                    .to_string(),
+            confidence: Some("medium".to_string()),
+            evidence: vec![
+                "src/unrelated.rs:10 returns before validating input.".to_string(),
+            ],
+            limitations: vec![],
+            quoted_code: None,
+        };
+
+        assert_eq!(
+            agent_item_quality_issue(&item, &changed_file(), true),
+            Some("feedback_for_different_file".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_summary_feedback_without_changed_line_anchor() {
+        let item = AgentFeedbackItem {
+            title: "Avoid reviewing unrelated repository context".to_string(),
+            severity: "important".to_string(),
+            file: None,
+            line: None,
+            start_line: None,
+            end_line: None,
+            body: "The repository search result points at a possible validation issue, but the model did not anchor the finding to an added line from the current diff. Publishing it as summary feedback would allow comments about code that was not changed in the selected branch.".to_string(),
+            message: String::new(),
+            suggested_action:
+                "Return the changed line that introduces the issue, or return no feedback when the issue is only in repository context."
+                    .to_string(),
+            confidence: Some("medium".to_string()),
+            evidence: vec![
+                "src/example.rs:8 context line was inspected by a repository tool.".to_string(),
+            ],
+            limitations: vec![],
+            quoted_code: None,
+        };
+
+        assert_eq!(
+            agent_item_quality_issue(&item, &changed_file(), true),
+            Some("missing_changed_line_range".to_string())
         );
     }
 
@@ -269,7 +444,7 @@ mod tests {
         };
         let file = changed_file();
 
-        assert_eq!(agent_item_quality_issue(&item, &file), None);
+        assert_eq!(agent_item_quality_issue(&item, &file, true), None);
 
         let feedback = feedback_from_agent_item(
             item,

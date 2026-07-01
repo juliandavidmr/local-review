@@ -17,7 +17,7 @@ pub(super) fn review_prompt(
     budget: ModelPromptBudget,
 ) -> String {
     let tool_instruction = if repository_tools_enabled {
-        "- Use read_repository_file or search_repository before making claims about callers, definitions, tests, configuration, or behavior outside the visible hunk."
+        "- Use read_repository_file or search_repository before making claims about callers, definitions, tests, configuration, or behavior outside the visible hunk.\n- If an added line calls a function, helper, constant, type, enum, import, or method that is not defined in the visible hunk, do not assume it is missing. Search for it first, then inspect the defining file when the finding depends on that symbol."
     } else {
         "- Repository exploration tools are disabled for this pass; return limitations instead of guessing about callers, definitions, tests, configuration, or behavior outside the visible hunk."
     };
