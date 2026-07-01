@@ -30,23 +30,22 @@ impl<M: rig::completion::CompletionModel> rig::agent::PromptHook<M> for ToolUsag
         _internal_call_id: &str,
         _args: &str,
     ) -> rig::agent::ToolCallHookAction {
-        let pass_exploration_requests =
-            self.exploration_requests.fetch_add(1, Ordering::SeqCst) + 1;
+        self.exploration_requests.fetch_add(1, Ordering::SeqCst);
         if let Some(progress) = &self.progress {
             let exploration_requests =
-                progress.existing_exploration_requests + pass_exploration_requests;
+                progress.exploration_requests.fetch_add(1, Ordering::SeqCst) + 1;
             let _ = progress.app.emit(
                 "review-progress",
                 serde_json::json!({
                     "reviewId": progress.review_id,
                     "execution": ExecutionStatus {
                         status: "running".to_string(),
-                        completed_passes: progress.completed_passes,
+                        completed_passes: progress.completed_passes.load(Ordering::SeqCst),
                         total_passes: progress.total_passes,
                         changed_files: 0,
                         modified_lines: 0,
                         exploration_requests,
-                        guardrail_hits: progress.failed_passes,
+                        guardrail_hits: progress.failed_passes.load(Ordering::SeqCst),
                         current_file: Some(progress.current_file.clone()),
                         current_profile: Some(progress.current_profile.clone()),
                         current_phase: Some(format!(

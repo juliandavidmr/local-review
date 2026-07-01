@@ -222,8 +222,10 @@ export function LocalReviewWorkspace() {
 			title="Review Workspace"
 		>
 			<div className="space-y-5">
-				<SelectedProviderSummary providerSettings={session.providerSettings} />
-				<SetupOverview session={session} />
+				<SetupOverview
+					providerSettings={session.providerSettings}
+					session={session}
+				/>
 				<ExecutionStatus execution={session.execution} />
 				<FeedbackWorkspace
 					changeSet={session.changeSet}
@@ -427,29 +429,6 @@ function preserveCuratedFeedback(
 			(item) => curatedById.get(item.id) ?? item,
 		),
 	};
-}
-
-function SelectedProviderSummary({
-	providerSettings,
-}: {
-	providerSettings: ProviderSettings;
-}) {
-	const selectedProvider = providerSettings.modelProviders.find(
-		(provider) => provider.enabled && provider.selectedModelId,
-	);
-
-	return (
-		<section className="border border-border bg-card p-4">
-			<p className="text-xs font-medium uppercase text-muted-foreground">
-				Provider and model
-			</p>
-			<h2 className="mt-1 text-lg font-semibold">
-				{selectedProvider
-					? `${selectedProvider.name} / ${selectedProvider.selectedModelId}`
-					: "No provider selected"}
-			</h2>
-		</section>
-	);
 }
 
 function errorMessage(error: unknown): string {

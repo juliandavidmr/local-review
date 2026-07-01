@@ -1,5 +1,6 @@
 use crate::domain::ReviewFeedback;
 use serde::Deserialize;
+use std::sync::{atomic::AtomicU32, Arc};
 use tauri::AppHandle;
 
 #[derive(Debug, Deserialize)]
@@ -49,10 +50,10 @@ pub(crate) struct AgentProgressContext {
     pub review_id: String,
     pub current_file: String,
     pub current_profile: String,
-    pub completed_passes: u32,
+    pub completed_passes: Arc<AtomicU32>,
     pub total_passes: u32,
-    pub failed_passes: u32,
-    pub existing_exploration_requests: u32,
+    pub failed_passes: Arc<AtomicU32>,
+    pub exploration_requests: Arc<AtomicU32>,
     pub current_phase: String,
 }
 
