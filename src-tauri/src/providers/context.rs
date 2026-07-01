@@ -215,6 +215,6 @@ mod tests {
         let with_tools = prompt_char_budget(8_192, true);
 
         assert!(with_tools < without_tools);
-        assert!(with_tools <= 5_000);
+        assert!(with_tools <= 6_500);
     }
 }

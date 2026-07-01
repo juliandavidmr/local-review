@@ -1,4 +1,6 @@
-use crate::domain::{now_iso, ChangedFile, ModelProviderSettings, ReviewProfileItem};
+use crate::domain::{
+    now_iso, ChangedFile, LocalModelProviderKind, ModelProviderSettings, ReviewProfileItem,
+};
 
 use super::{
     agent::{parse_json_from_model, repair_model_json, run_rig_agent},
@@ -40,12 +42,14 @@ pub(crate) async fn run_review_pass(
         repository_tools_enabled,
         prompt_budget,
     );
+    let structured_output_enabled = structured_output_enabled(provider);
     let (mut parsed, mut exploration_requests, mut raw_response) = run_review_agent_and_parse(
         &base_url,
         &model,
         &prompt,
         &change_set.repository_path,
         repository_tools_enabled,
+        structured_output_enabled,
         Some(progress.clone()),
     )
     .await?;
@@ -70,6 +74,7 @@ pub(crate) async fn run_review_pass(
                 &grounding_prompt,
                 &change_set.repository_path,
                 true,
+                structured_output_enabled,
                 Some(AgentProgressContext {
                     current_phase: "Grounding external claims with repository tools".to_string(),
                     ..progress.clone()
@@ -124,12 +129,17 @@ pub(crate) async fn run_review_pass(
     })
 }
 
+fn structured_output_enabled(provider: &ModelProviderSettings) -> bool {
+    matches!(&provider.kind, LocalModelProviderKind::LmStudio)
+}
+
 async fn run_review_agent_and_parse(
     base_url: &str,
     model: &str,
     prompt: &str,
     repository_path: &str,
     repository_tools_enabled: bool,
+    structured_output_enabled: bool,
     progress: Option<AgentProgressContext>,
 ) -> Result<(AgentFeedbackOutput, u32, String), String> {
     let agent_result = run_rig_agent(
@@ -138,6 +148,7 @@ async fn run_review_agent_and_parse(
         prompt,
         repository_path,
         repository_tools_enabled,
+        structured_output_enabled,
         progress,
     )
     .await?;
@@ -155,4 +166,32 @@ async fn run_review_agent_and_parse(
     };
 
     Ok((parsed, agent_result.exploration_requests, agent_result.raw))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::structured_output_enabled;
+    use crate::domain::{LocalModelProviderKind, ModelProviderSettings};
+
+    fn provider(kind: LocalModelProviderKind) -> ModelProviderSettings {
+        ModelProviderSettings {
+            id: "provider".to_string(),
+            kind,
+            name: "Provider".to_string(),
+            base_url: "http://localhost".to_string(),
+            enabled: true,
+            selected_model_id: Some("model".to_string()),
+            use_for_human_tone_rewrite: false,
+        }
+    }
+
+    #[test]
+    fn structured_output_is_enabled_for_lm_studio_only() {
+        assert!(structured_output_enabled(&provider(
+            LocalModelProviderKind::LmStudio
+        )));
+        assert!(!structured_output_enabled(&provider(
+            LocalModelProviderKind::Ollama
+        )));
+    }
 }

@@ -208,11 +208,11 @@ fn trim_to_char_budget(value: String, max_chars: usize) -> String {
         return value;
     }
 
-    let keep = max_chars.saturating_sub(80);
+    let marker =
+        "\n...content omitted to fit model context; do not make claims about omitted lines...";
+    let keep = max_chars.saturating_sub(marker.len());
     let mut trimmed = value.chars().take(keep).collect::<String>();
-    trimmed.push_str(
-        "\n...content omitted to fit model context; do not make claims about omitted lines...",
-    );
+    trimmed.push_str(marker);
     trimmed
 }
 

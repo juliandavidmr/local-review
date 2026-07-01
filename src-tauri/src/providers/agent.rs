@@ -14,6 +14,7 @@ pub(super) async fn run_rig_agent(
     prompt: &str,
     repository_path: &str,
     repository_tools_enabled: bool,
+    structured_output_enabled: bool,
     progress: Option<AgentProgressContext>,
 ) -> Result<ReviewAgentResult, String> {
     use rig::{
@@ -32,10 +33,16 @@ pub(super) async fn run_rig_agent(
             exploration_requests: exploration_requests.clone(),
             progress,
         };
-        let agent = AgentBuilder::new(model)
+        let agent_builder = AgentBuilder::new(model)
             .preamble("You are a senior code reviewer preparing draft comments for direct publication. Return only valid JSON matching the requested schema. Do not use markdown fences.")
             .temperature(0.1)
-            .max_tokens(1024)
+            .max_tokens(1024);
+        let agent_builder = if structured_output_enabled {
+            agent_builder.output_schema::<AgentFeedbackOutput>()
+        } else {
+            agent_builder
+        };
+        let agent = agent_builder
             .tool(ReadRepositoryFileTool::new(repository_path))
             .tool(SearchRepositoryTool::new(repository_path))
             .build();
@@ -51,11 +58,16 @@ pub(super) async fn run_rig_agent(
             exploration_requests: exploration_requests.load(Ordering::SeqCst),
         })
     } else {
-        let agent = AgentBuilder::new(model)
+        let agent_builder = AgentBuilder::new(model)
             .preamble("You are a senior code reviewer preparing draft comments for direct publication. Return only valid JSON matching the requested schema. Do not use markdown fences.")
             .temperature(0.1)
-            .max_tokens(1024)
-            .build();
+            .max_tokens(1024);
+        let agent_builder = if structured_output_enabled {
+            agent_builder.output_schema::<AgentFeedbackOutput>()
+        } else {
+            agent_builder
+        };
+        let agent = agent_builder.build();
 
         let response = agent
             .prompt(prompt.to_string())
@@ -79,7 +91,7 @@ pub(super) async fn repair_model_json(
         raw
     );
 
-    let result = run_rig_agent(base_url, model, &prompt, ".", false, None).await?;
+    let result = run_rig_agent(base_url, model, &prompt, ".", false, false, None).await?;
     Ok(result.raw)
 }
 
