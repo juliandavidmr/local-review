@@ -16,6 +16,11 @@ const reviewSourceOptions: Array<{
 		description: "Diff the current branch against its upstream or main base.",
 	},
 	{
+		value: "compare_refs",
+		label: "Compare refs",
+		description: "Manually set the base and head refs, such as develop...HEAD.",
+	},
+	{
 		value: "staged_changes",
 		label: "Staged changes",
 		description: "Review only changes already staged with git add.",
@@ -32,7 +37,7 @@ export function ReviewSourceSelector({
 	onChange,
 }: ReviewSourceSelectorProps) {
 	return (
-		<div className="grid gap-3 md:grid-cols-3">
+		<div className="grid gap-3 md:grid-cols-4">
 			{reviewSourceOptions.map((option) => (
 				<button
 					className={

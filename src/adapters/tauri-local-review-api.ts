@@ -46,6 +46,7 @@ export type ReviewChangeSourceKind =
   | "staged_changes"
   | "unstaged_changes"
   | "working_tree"
+  | "compare_refs"
 
 export type ReviewWorkspaceSession = ReviewWorkspaceView & {
   changeSet: ChangeSetSnapshot
@@ -77,15 +78,35 @@ export async function openRepository(
   return invoke("open_repository", { repositoryPath })
 }
 
+export async function listRepositoryBranches(
+  repositoryPath: string,
+): Promise<string[]> {
+  return invoke("list_repository_branches", { repositoryPath })
+}
+
 export async function buildChangeSet(
   repositoryPath: string,
   sourceKind: ReviewChangeSourceKind,
+  refs?: {
+    baseRef?: string
+    headRef?: string
+  },
 ): Promise<ChangeSetSnapshot> {
+  const source =
+    sourceKind === "compare_refs"
+      ? {
+          type: sourceKind,
+          repository_path: repositoryPath,
+          base_ref: refs?.baseRef?.trim() ?? "",
+          head_ref: refs?.headRef?.trim() ?? "",
+        }
+      : {
+          type: sourceKind,
+          repository_path: repositoryPath,
+        }
+
   return invoke("build_change_set", {
-    source: {
-      type: sourceKind,
-      repository_path: repositoryPath,
-    },
+    source,
   })
 }
 
@@ -235,6 +256,8 @@ function changeSourceIntent(changeSource: string): string {
       return "Reviewing local changes staged for commit"
     case "Unstaged changes":
       return "Reviewing local unstaged working tree changes"
+    case "Compare refs":
+      return "Reviewing a manual base and head ref comparison"
     default:
       return "Reviewing local changes"
   }

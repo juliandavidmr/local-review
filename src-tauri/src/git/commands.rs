@@ -30,7 +30,16 @@ pub fn diff_args(repository_path: &str, source: &ChangeSource) -> Result<Vec<Str
         ]),
         ChangeSource::CompareRefs {
             base_ref, head_ref, ..
-        } => Ok(vec!["diff".to_string(), format!("{base_ref}...{head_ref}")]),
+        } => {
+            if base_ref.trim().is_empty() || head_ref.trim().is_empty() {
+                return Err("Compare refs needs both a base ref and a head ref.".to_string());
+            }
+
+            Ok(vec![
+                "diff".to_string(),
+                format!("{}...{}", base_ref.trim(), head_ref.trim()),
+            ])
+        }
     }
 }
 
@@ -129,14 +138,22 @@ fn current_branch_owned_paths(
 }
 
 fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
+    if let Some(upstream) = current_branch_upstream_base_ref(repository_path) {
+        return Ok(upstream);
+    }
+
     for candidate in ["origin/main", "origin/master", "main", "master"] {
         if run_git(repository_path, &["rev-parse", "--verify", candidate]).is_ok() {
             return Ok(candidate.to_string());
         }
     }
 
+    Err("Current branch review needs an upstream branch or a main/master base ref.".to_string())
+}
+
+fn current_branch_upstream_base_ref(repository_path: &str) -> Option<String> {
     let current_branch = run_git(repository_path, &["branch", "--show-current"]).ok();
-    if let Ok(upstream) = run_git(
+    let upstream = run_git(
         repository_path,
         &[
             "rev-parse",
@@ -144,19 +161,19 @@ fn current_branch_base_ref(repository_path: &str) -> Result<String, String> {
             "--symbolic-full-name",
             "@{upstream}",
         ],
-    ) {
-        let upstream = upstream.trim();
-        let tracks_same_branch = current_branch
-            .as_deref()
-            .map(|branch| upstream.ends_with(&format!("/{branch}")) || upstream == branch)
-            .unwrap_or(false);
+    )
+    .ok()?;
+    let upstream = upstream.trim();
+    let tracks_same_branch = current_branch
+        .as_deref()
+        .map(|branch| upstream.ends_with(&format!("/{branch}")) || upstream == branch)
+        .unwrap_or(false);
 
-        if !upstream.is_empty() && !tracks_same_branch {
-            return Ok(upstream.trim().to_string());
-        }
+    if !upstream.is_empty() && !tracks_same_branch {
+        Some(upstream.to_string())
+    } else {
+        None
     }
-
-    Err("Current branch review needs an upstream branch or a main/master base ref.".to_string())
 }
 
 #[cfg(test)]
@@ -205,6 +222,40 @@ mod tests {
     }
 
     #[test]
+    fn current_branch_prefers_configured_base_upstream_over_main() {
+        let repo = TestRepo::new();
+        repo.git(&["init", "--initial-branch=main"]);
+        repo.git(&["config", "user.email", "test@example.com"]);
+        repo.git(&["config", "user.name", "Test User"]);
+        repo.write("main.txt", "base main\n");
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "initial"]);
+        repo.git(&["checkout", "-b", "develop"]);
+        repo.write("develop.txt", "develop only\n");
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "develop change"]);
+        repo.git(&["checkout", "-b", "feature"]);
+        repo.git(&["branch", "--set-upstream-to=develop"]);
+        repo.write("feature.txt", "feature only\n");
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-m", "feature change"]);
+
+        let args = diff_args(
+            repo.path_str(),
+            &ChangeSource::CurrentBranch {
+                repository_path: repo.path_str().to_string(),
+            },
+        )
+        .expect("current branch diff args should resolve");
+
+        assert_eq!(args, vec!["diff", "develop...HEAD", "--", "feature.txt"]);
+
+        let name_status = run_git_with_extra(repo.path_str(), &args, &["--name-status"])
+            .expect("name-status diff should run with upstream base");
+        assert_eq!(name_status.trim(), "A\tfeature.txt");
+    }
+
+    #[test]
     fn compare_refs_uses_merge_base_diff() {
         let args = diff_args(
             "/repo",
@@ -217,6 +268,21 @@ mod tests {
         .expect("compare refs diff args should not inspect the repository");
 
         assert_eq!(args, vec!["diff", "origin/main...feature"]);
+    }
+
+    #[test]
+    fn compare_refs_requires_base_and_head_refs() {
+        let error = diff_args(
+            "/repo",
+            &ChangeSource::CompareRefs {
+                repository_path: "/repo".to_string(),
+                base_ref: "develop".to_string(),
+                head_ref: " ".to_string(),
+            },
+        )
+        .expect_err("compare refs should reject missing head refs");
+
+        assert_eq!(error, "Compare refs needs both a base ref and a head ref.");
     }
 
     struct TestRepo {

@@ -25,7 +25,7 @@ import type { ReviewProfileItem } from "@/domain/workspace-view";
 import { GhStatusControl } from "./GhStatusControl";
 import { ProviderSetupCard } from "./ProviderSetupCard";
 import { ReviewProfilesSetup } from "./ReviewProfilesSetup";
-import { ReviewSourceSelector } from "./ReviewSourceSelector";
+import { ReviewSourceSetup } from "./ReviewSourceSetup";
 import { SetupBlock } from "./SetupBlock";
 import { useProviderModelProbe } from "./useProviderModelProbe";
 
@@ -39,6 +39,8 @@ type InitialSetupScreenProps = {
 	onComplete: (setup: {
 		repositoryPath: string;
 		reviewSourceKind: ReviewChangeSourceKind;
+		baseRef?: string;
+		headRef?: string;
 		profiles: ReviewProfileItem[];
 		providerSettings: ProviderSettings;
 	}) => void | Promise<void>;
@@ -60,6 +62,8 @@ export function InitialSetupScreen({
 	);
 	const [reviewSourceKind, setReviewSourceKind] =
 		useState<ReviewChangeSourceKind>("current_branch");
+	const [baseRef, setBaseRef] = useState("");
+	const [headRef, setHeadRef] = useState("");
 	const { loadingProviderId, modelsByProvider, refreshProvider, statuses } =
 		useProviderModelProbe(settings, setSettings);
 	const autoTestedLmStudio = useRef(false);
@@ -73,6 +77,8 @@ export function InitialSetupScreen({
 	const activeProviderId = activeProvider?.id ?? "lm-studio";
 	const canStart =
 		repositoryPath.trim().length > 0 &&
+		(reviewSourceKind !== "compare_refs" ||
+			(baseRef.trim().length > 0 && headRef.trim().length > 0)) &&
 		Boolean(selectedProvider) &&
 		activeProfiles.length > 0 &&
 		!isRunning;
@@ -195,9 +201,14 @@ export function InitialSetupScreen({
 					</SetupBlock>
 
 					<SetupBlock title="Review source">
-						<ReviewSourceSelector
-							onChange={setReviewSourceKind}
-							value={reviewSourceKind}
+						<ReviewSourceSetup
+							baseRef={baseRef}
+							headRef={headRef}
+							onBaseRefChange={setBaseRef}
+							onHeadRefChange={setHeadRef}
+							onSourceChange={setReviewSourceKind}
+							repositoryPath={repositoryPath}
+							sourceKind={reviewSourceKind}
 						/>
 					</SetupBlock>
 
@@ -219,6 +230,8 @@ export function InitialSetupScreen({
 							onComplete({
 								repositoryPath: repositoryPath.trim(),
 								reviewSourceKind,
+								baseRef: baseRef.trim(),
+								headRef: headRef.trim(),
 								profiles,
 								providerSettings: settings,
 							})

@@ -97,11 +97,15 @@ export function LocalReviewWorkspace() {
 						const changeSet = await buildChangeSet(
 							repository.path,
 							setup.reviewSourceKind,
+							{
+								baseRef: setup.baseRef,
+								headRef: setup.headRef,
+							},
 						);
 
 						if (changeSet.files.length === 0) {
 							throw new Error(
-								"The selected review source produced 0 changed files. Choose Current branch for committed branch changes, Staged changes for git add changes, or Unstaged changes for local working tree edits.",
+								"The selected review source produced 0 changed files. Choose Current branch for committed branch changes, Compare refs for a manual base/head comparison, Staged changes for git add changes, or Unstaged changes for local working tree edits.",
 							);
 						}
 
