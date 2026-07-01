@@ -110,7 +110,7 @@ export function FeedbackWorkspace({
 
 	return (
 		<section className="border border-border bg-card">
-			<div className="flex flex-col gap-4 border-b border-border p-4 xl:flex-row xl:items-start xl:justify-between">
+			<div className="flex flex-col gap-3 border-b border-border p-4 xl:flex-row xl:items-start xl:justify-between">
 				<div>
 					<p className="text-xs font-medium uppercase text-muted-foreground">
 						Feedback
@@ -123,9 +123,9 @@ export function FeedbackWorkspace({
 					</p>
 				</div>
 
-				<div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+				<div className="flex flex-wrap items-start gap-1.5 xl:max-w-[720px] xl:justify-end">
 					<Input
-						className="md:col-span-2 xl:col-span-1"
+						className="h-7 w-full border-border/70 bg-transparent px-2 text-[11px] placeholder:text-muted-foreground/70 sm:w-44"
 						onChange={(event) => setQuery(event.target.value)}
 						placeholder="Filter feedback"
 						value={query}
@@ -200,13 +200,17 @@ function FilterSelect<T extends string>({
 	onChange,
 }: FilterSelectProps<T>) {
 	return (
-		<div className="space-y-1">
-			<p className="text-xs font-medium text-muted-foreground">{label}</p>
+		<div className="min-w-fit">
+			<p className="sr-only">{label}</p>
 			<Select
 				onValueChange={(nextValue) => onChange(nextValue as T)}
 				value={value}
 			>
-				<SelectTrigger>
+				<SelectTrigger
+					aria-label={label}
+					className="h-7 border-border/70 px-2 text-[11px] text-muted-foreground hover:border-border hover:text-foreground"
+					size="sm"
+				>
 					<SelectValue />
 				</SelectTrigger>
 				<SelectContent>
